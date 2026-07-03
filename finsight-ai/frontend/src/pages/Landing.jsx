@@ -31,9 +31,9 @@ export default function Landing() {
       {/* Navbar */}
       <nav className="bg-surface-container-lowest dark:bg-surface-container-lowest docked full-width top-0 sticky z-50 border-b border-border dark:border-outline-variant flat no shadows">
         <div className="flex justify-between items-center w-full px-gutter max-w-container-max mx-auto h-16">
-          <div className="flex items-center gap-2">
-            <span className="material-symbols-outlined text-primary text-3xl" style={{ fontVariationSettings: "'FILL' 1" }}>currency_rupee</span>
-            <span className="font-headline-sm text-headline-sm font-bold text-primary dark:text-primary-fixed">FinSight AI</span>
+          <div className="flex items-center gap-3">
+            <img src="/logo.png" alt="FinSight AI" className="w-12 h-12 object-contain rounded" />
+            <span className="font-headline-sm text-headline-sm font-bold text-primary">FinSight AI</span>
           </div>
           <div className="hidden md:flex items-center gap-8">
             <a className="font-label-caps text-label-caps text-on-surface-variant hover:text-primary-container transition-colors" href="#how-it-works">How it works</a>
@@ -60,7 +60,7 @@ export default function Landing() {
                   <button onClick={() => { alert('Profile view coming soon!'); setIsDropdownOpen(false); }} className="text-left px-4 py-2.5 text-sm font-body-md text-on-surface hover:bg-surface-container-high transition-colors flex items-center gap-3">
                     <span className="material-symbols-outlined text-[18px] text-primary">person</span> View Profile
                   </button>
-                  <button onClick={() => { logout(); setIsDropdownOpen(false); }} className="text-left px-4 py-2.5 text-sm font-body-md text-error hover:bg-error-container transition-colors flex items-center gap-3">
+                  <button onClick={() => { setIsDropdownOpen(false); navigate('/'); setTimeout(() => logout(), 10); }} className="text-left px-4 py-2.5 text-sm font-body-md text-error hover:bg-error-container transition-colors flex items-center gap-3">
                     <span className="material-symbols-outlined text-[18px]">logout</span> Logout
                   </button>
                 </div>
@@ -305,8 +305,8 @@ export default function Landing() {
       <footer className="bg-surface-container-low dark:bg-surface-container-lowest full-width py-12 border-t border-border dark:border-outline-variant flat no shadows">
         <div className="w-full px-gutter max-w-container-max mx-auto flex flex-col md:flex-row justify-between items-start gap-12">
           <div className="space-y-4">
-            <div className="flex items-center gap-2">
-              <span className="material-symbols-outlined text-primary text-3xl" style={{ fontVariationSettings: "'FILL' 1" }}>currency_rupee</span>
+            <div className="flex items-center gap-3">
+              <img src="/logo.png" alt="FinSight AI" className="w-12 h-12 object-contain rounded" />
               <span className="font-headline-sm text-headline-sm font-bold text-primary">FinSight AI</span>
             </div>
             <p className="font-body-md text-text-secondary max-w-xs">Built for Indian investors who value precision and privacy.</p>

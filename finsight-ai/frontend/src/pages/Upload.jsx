@@ -4,6 +4,7 @@ import { extractTextFromPDF } from '../utils/pdfParser';
 import { anonymiseText } from '../utils/anonymiser';
 import { extractTextFromExcel } from '../utils/excelParser';
 import { extractTextFromImage } from '../utils/imageParser';
+import { saveDocument } from '../utils/localDb';
 
 export default function Upload() {
   const navigate = useNavigate();
@@ -11,6 +12,33 @@ export default function Upload() {
   
   const [documents, setDocuments] = useState([]);
   const [isDragActive, setIsDragActive] = useState(false);
+
+  const handleStartChatting = async () => {
+    localStorage.setItem('finsight_docs_uploaded', 'true');
+    
+    // Determine which document types were uploaded based on the status of our documents state
+    const uploads = { sip: false, insurance: false, loan: false };
+    const readyDocs = [];
+    
+    documents.forEach(doc => {
+      if (doc.status === 'Ready') {
+        readyDocs.push(doc);
+        const lower = doc.name.toLowerCase();
+        if (lower.includes('sip') || lower.includes('fund') || lower.includes('mutual')) uploads.sip = true;
+        else if (lower.includes('policy') || lower.includes('insurance') || lower.includes('lic')) uploads.insurance = true;
+        else if (lower.includes('loan') || lower.includes('emi') || lower.includes('statement')) uploads.loan = true;
+        else uploads.sip = true; // Default fallback if unknown
+      }
+    });
+    
+    // Save to IndexedDB
+    for (const doc of readyDocs) {
+      await saveDocument(doc);
+    }
+    
+    localStorage.setItem('finsight_partial_uploads', JSON.stringify(uploads));
+    navigate('/chat');
+  };
 
   const processFile = async (file) => {
     if (!file) return;
@@ -90,21 +118,7 @@ export default function Upload() {
   };
 
   return (
-    <div className="bg-background font-body-md text-on-surface min-h-screen">
-      {/* TopNavBar (Expanded for web) */}
-      <header className="bg-surface-container-lowest border-b border-border sticky top-0 z-50">
-        <div className="flex justify-between items-center w-full px-6 max-w-4xl mx-auto h-16">
-          <div className="flex items-center gap-4">
-            <button onClick={() => navigate('/')} className="hover:bg-surface-container-low p-2 rounded-full transition-colors active:scale-95">
-              <span className="material-symbols-outlined text-on-surface-variant">arrow_back</span>
-            </button>
-            <span className="font-headline-sm text-headline-sm font-bold text-primary">FinSight AI</span>
-          </div>
-          <div className="font-label-caps text-label-caps text-text-secondary bg-surface-container-low px-3 py-1 rounded-full">
-            Step 1 of 2
-          </div>
-        </div>
-      </header>
+    <div className="bg-background font-body-md text-on-surface w-full h-full overflow-y-auto">
 
       <main className="max-w-4xl mx-auto px-6 pt-12 pb-24">
         {/* Headline Section */}
@@ -184,7 +198,7 @@ export default function Upload() {
         {/* CTA Section */}
         {documents.length > 0 && (
           <button 
-            onClick={() => navigate('/chat', { state: { documents } })}
+            onClick={handleStartChatting}
             className="w-full bg-primary text-white font-semibold py-4 rounded-xl flex items-center justify-center gap-2 hover:bg-primary-container transition-all active:scale-[0.98] shadow-lg shadow-primary/20"
           >
             Start chatting with {documents.length} document{documents.length !== 1 && 's'}
@@ -192,18 +206,6 @@ export default function Upload() {
           </button>
         )}
       </main>
-      
-      {/* Footer */}
-      <footer className="w-full border-t border-border py-8 mt-12 bg-surface-container-low">
-        <div className="max-w-4xl mx-auto px-6 text-center">
-          <p className="font-label-caps text-label-caps text-text-muted mb-4 uppercase">© 2024 FinSight AI. Not financial advice.</p>
-          <div className="flex justify-center gap-6">
-            <a className="text-[12px] font-bold text-text-secondary hover:text-primary transition-colors" href="#">Privacy Policy</a>
-            <a className="text-[12px] font-bold text-text-secondary hover:text-primary transition-colors" href="#">Terms of Service</a>
-            <a className="text-[12px] font-bold text-text-secondary hover:text-primary transition-colors" href="#">Security</a>
-          </div>
-        </div>
-      </footer>
     </div>
   );
 }

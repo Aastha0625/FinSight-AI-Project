@@ -1,4 +1,4 @@
-function planMonthlyCashflow({ monthlyIncome, emis, sipAmounts, insurancePremiums }) {
+function planMonthlyCashflow({ monthlyIncome = 100000, emis = [25000], sipAmounts = [15000], insurancePremiums = [2000] }) {
   const sumArray = (arr) => arr.reduce((acc, curr) => acc + curr, 0);
   
   const totalEMI = sumArray(emis || []);
@@ -11,10 +11,21 @@ function planMonthlyCashflow({ monthlyIncome, emis, sipAmounts, insurancePremium
   const commitmentRatio = (totalCommitments / monthlyIncome) * 100;
   
   let status = "Healthy";
-  if (commitmentRatio > 70) status = "Highly Stressed";
-  else if (commitmentRatio > 50) status = "Stressed";
+  let statusColor = "#16A34A";
+  if (commitmentRatio > 50) { status = "High Stress"; statusColor = "#EF4444"; }
+  else if (commitmentRatio >= 35) { status = "Manageable"; statusColor = "#F59E0B"; }
+  
+  const breakdown = [
+    { label: "EMIs", value: totalEMI, color: "#EF4444" },
+    { label: "SIPs", value: totalSIP, color: "#16A34A" },
+    { label: "Insurance", value: totalPremium, color: "#3B82F6" },
+    { label: "Surplus", value: Math.max(0, surplus), color: "#E5E7EB" }
+  ];
   
   return {
+    breakdown,
+    monthlyIncome,
+    statusColor,
     totalEMI,
     totalSIP,
     totalPremium,

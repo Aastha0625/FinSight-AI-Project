@@ -1,6 +1,6 @@
 const { calculateSIPMaturity } = require('./sipCalculator');
 
-function analyseGoalGap({ goalName, targetAmount, targetYear, currentSIPAmount, expectedReturn }) {
+function analyseGoalGap({ goalName = "My Goal", targetAmount = 5000000, targetYear = new Date().getFullYear() + 10, currentSIPAmount = 5000, expectedReturn = 12 }) {
   const currentYear = new Date().getFullYear();
   const years = targetYear - currentYear;
   
@@ -21,6 +21,8 @@ function analyseGoalGap({ goalName, targetAmount, targetYear, currentSIPAmount, 
   const gap = Math.max(0, targetAmount - projectedValue);
   const onTrack = gap <= 0;
   
+  const progressPercent = Math.min(100, Math.round((projectedValue / targetAmount) * 100));
+  
   let additionalSIPNeeded = 0;
   if (gap > 0) {
     const r = expectedReturn / 12 / 100;
@@ -29,6 +31,10 @@ function analyseGoalGap({ goalName, targetAmount, targetYear, currentSIPAmount, 
   }
   
   return {
+    goalName,
+    targetAmount,
+    yearsLeft: years,
+    progressPercent,
     projectedValue: Math.round(projectedValue),
     gap: Math.round(gap),
     additionalSIPNeeded: Math.round(additionalSIPNeeded),

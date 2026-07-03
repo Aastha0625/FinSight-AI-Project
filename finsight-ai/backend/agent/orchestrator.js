@@ -114,15 +114,61 @@ async function runAgent({ userQuestion, documentContext, conversationHistory = [
 
   let isFinished = false;
   let finalContent = "";
+  let toolsUsed = [];
   let maxIterations = 10;
 
   while (!isFinished && maxIterations-- > 0) {
-    const response = await client.chat.completions.create({
-      model: "llama-3.3-70b-versatile",
-      messages: messages,
-      tools: tools,
-      tool_choice: "auto",
-    });
+    let response;
+    try {
+      response = await client.chat.completions.create({
+        model: "llama-3.3-70b-versatile",
+        messages: messages,
+        tools: tools,
+        tool_choice: "auto",
+        parallel_tool_calls: false,
+      });
+    } catch (groqErr) {
+      if (groqErr.status === 400 && groqErr.error && groqErr.error.error && groqErr.error.error.code === 'tool_use_failed') {
+        const failedGen = groqErr.error.error.failed_generation || "";
+        const funcMatch = failedGen.match(/<function=["']?(.*?)["']?>/);
+        
+        if (funcMatch) {
+          const functionName = funcMatch[1];
+          let jsonString = failedGen.replace(/<function[^>]*>/, '').replace(/<\/function>.*/s, '').trim();
+          let functionArgs = {};
+          
+          try {
+            jsonString = jsonString.replace(/}}+$/, '}').replace(/\]+$/, ']');
+            functionArgs = JSON.parse(jsonString);
+          } catch (e) {
+            console.error("Failed to parse hallucinated JSON:", jsonString);
+          }
+
+          let result;
+          try {
+            result = executeToolCall(functionName, functionArgs);
+            toolsUsed.push({ name: functionName, result });
+          } catch (err) {
+            result = { error: err.message };
+          }
+
+          messages.push({ role: "assistant", content: failedGen });
+          messages.push({
+            role: "user",
+            content: `Tool "${functionName}" returned this result: ${JSON.stringify(result)}\n\nPlease now provide a clear financial analysis using this data.`
+          });
+          continue;
+        } else {
+          // Fallback: Retry without tools if it hallucinates something completely unparseable
+          response = await client.chat.completions.create({
+            model: "llama-3.3-70b-versatile",
+            messages: messages,
+          });
+        }
+      } else {
+        throw groqErr;
+      }
+    }
 
     const choice = response.choices[0];
     const responseMessage = choice.message;
@@ -138,6 +184,7 @@ async function runAgent({ userQuestion, documentContext, conversationHistory = [
         let result;
         try {
           result = executeToolCall(functionName, functionArgs);
+          toolsUsed.push({ name: functionName, result });
         } catch (err) {
           result = { error: err.message };
         }
@@ -154,34 +201,49 @@ async function runAgent({ userQuestion, documentContext, conversationHistory = [
 
     // ── Case 2: model returned a JSON tool-call string in content (fallback) ──
     const contentStr = (responseMessage.content || "").trim();
-    let parsedToolCall = null;
-    if (contentStr.startsWith("{") && contentStr.includes("\"type\"") && contentStr.includes("\"name\"")) {
-      try {
-        parsedToolCall = JSON.parse(contentStr);
-      } catch (_) { /* not valid JSON, ignore */ }
+    const lines = contentStr.split('\n');
+    let parsedToolCalls = [];
+    
+    for (let line of lines) {
+      let trimmed = line.trim();
+      if (trimmed.startsWith("{") && trimmed.includes("\"type\"") && trimmed.includes("\"name\"")) {
+        try {
+          parsedToolCalls.push(JSON.parse(trimmed));
+        } catch (_) {}
+      }
     }
 
-    if (parsedToolCall && parsedToolCall.name && (parsedToolCall.parameters || parsedToolCall.arguments)) {
-      const functionName = parsedToolCall.name;
-      const functionArgs = parsedToolCall.parameters || parsedToolCall.arguments || {};
-      // Coerce string numbers to actual numbers
-      const coercedArgs = {};
-      for (const [k, v] of Object.entries(functionArgs)) {
-        coercedArgs[k] = isNaN(v) ? v : Number(v);
-      }
-
-      let result;
-      try {
-        result = executeToolCall(functionName, coercedArgs);
-      } catch (err) {
-        result = { error: err.message };
-      }
-
-      // Inject the tool result as a user message and loop again
+    if (parsedToolCalls.length > 0) {
       messages.push({ role: "assistant", content: contentStr });
+      
+      for (const parsedToolCall of parsedToolCalls) {
+        if (parsedToolCall && parsedToolCall.name && (parsedToolCall.parameters || parsedToolCall.arguments)) {
+          const functionName = parsedToolCall.name;
+          const functionArgs = parsedToolCall.parameters || parsedToolCall.arguments || {};
+          // Coerce string numbers to actual numbers
+          const coercedArgs = {};
+          for (const [k, v] of Object.entries(functionArgs)) {
+            coercedArgs[k] = isNaN(v) ? v : Number(v);
+          }
+
+          let result;
+          try {
+            result = executeToolCall(functionName, coercedArgs);
+            toolsUsed.push({ name: functionName, result });
+          } catch (err) {
+            result = { error: err.message };
+          }
+
+          messages.push({
+            role: "user",
+            content: `Tool "${functionName}" returned this result: ${JSON.stringify(result)}`
+          });
+        }
+      }
+      
       messages.push({
         role: "user",
-        content: `Tool "${functionName}" returned this result: ${JSON.stringify(result)}\n\nPlease now provide a clear financial analysis using this data.`,
+        content: `Please now provide a clear financial analysis using the data returned from the tools. Format your answer nicely for the user, and DO NOT output the raw JSON tool calls again.`
       });
       continue;
     }
@@ -191,7 +253,7 @@ async function runAgent({ userQuestion, documentContext, conversationHistory = [
     finalContent = responseMessage.content;
   }
 
-  return finalContent;
+  return { answer: finalContent, toolsUsed };
 }
 
 function executeToolCall(name, args) {

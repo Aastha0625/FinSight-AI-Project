@@ -22,7 +22,7 @@ export default function Login() {
       if (!res.ok) throw new Error(data.error || 'Failed to login');
       
       login(data.user, data.token);
-      navigate('/upload');
+      navigate('/dashboard');
     } catch (err) {
       setError(err.message);
     }
@@ -30,7 +30,10 @@ export default function Login() {
 
   return (
     <div className="bg-background min-h-screen flex flex-col items-center justify-center p-6">
-      <Link to="/" className="font-headline-sm text-2xl font-bold text-primary mb-8 hover:opacity-80 transition-opacity">FinSight AI</Link>
+      <Link to="/" className="flex items-center gap-3 mb-8 hover:opacity-80 transition-opacity">
+        <img src="/logo.png" alt="FinSight AI" className="w-14 h-14 object-contain rounded" />
+        <span className="font-headline-sm text-2xl font-bold text-primary">FinSight AI</span>
+      </Link>
       <div className="bg-surface-container-lowest border border-border p-8 rounded-2xl w-full max-w-md shadow-xl">
         <h1 className="font-headline-sm text-3xl font-bold text-on-surface mb-2">Welcome Back</h1>
         <p className="text-on-surface-variant font-body-md mb-8">Sign in to access your financial dashboard.</p>

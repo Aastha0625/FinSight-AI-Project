@@ -5,8 +5,10 @@ import Upload from './pages/Upload';
 import Chat from './pages/Chat';
 import Login from './pages/Login';
 import Register from './pages/Register';
+import Dashboard from './pages/Dashboard';
 import { AuthProvider } from './context/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
+import Layout from './components/Layout';
 import './index.css';
 
 function App() {
@@ -17,14 +19,25 @@ function App() {
           <Route path="/" element={<Landing />} />
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
+          <Route path="/dashboard" element={
+            <ProtectedRoute>
+              <Layout>
+                <Dashboard />
+              </Layout>
+            </ProtectedRoute>
+          } />
           <Route path="/upload" element={
             <ProtectedRoute>
-              <Upload />
+              <Layout>
+                <Upload />
+              </Layout>
             </ProtectedRoute>
           } />
           <Route path="/chat" element={
             <ProtectedRoute>
-              <Chat />
+              <Layout>
+                <Chat />
+              </Layout>
             </ProtectedRoute>
           } />
         </Routes>
