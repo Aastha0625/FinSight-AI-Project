@@ -201,23 +201,40 @@ app.post('/api/chat', verifyToken, async (req, res) => {
     // Save user message to DB
     await db.addChatMessage(userId, sessionId, 'user', userQuestion);
 
-    // Run agent - expecting { answer, toolsUsed }
+    // Setup SSE headers
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+
+    // Send initial session ID chunk so frontend can update URL immediately if needed
+    res.write(`data: ${JSON.stringify({ type: 'session', sessionId })}\n\n`);
+
+    // Run agent with streaming callback
     const result = await runAgent({
       userQuestion: userQuestion.trim(),
       documentContext: documentContext.trim(),
       conversationHistory,
+      onContent: (chunk) => {
+        if (chunk) {
+          res.write(`data: ${JSON.stringify({ type: 'content', content: chunk })}\n\n`);
+        }
+      }
     });
 
-    // Save AI message to DB
+    // Save final AI message to DB
     await db.addChatMessage(userId, sessionId, 'assistant', result.answer);
 
-    res.json({ ...result, sessionId });
+    // Send final payload with tools used
+    res.write(`data: ${JSON.stringify({ type: 'done', answer: result.answer, toolsUsed: result.toolsUsed, sessionId })}\n\n`);
+    res.end();
   } catch (err) {
     console.error('[/api/chat] Error:', err.message || err);
-    res.status(500).json({
-      error: 'Internal server error. The AI agent encountered a problem.',
-      details: err.message || 'Unknown error',
-    });
+    if (!res.headersSent) {
+      res.status(500).json({ error: 'Internal server error. The AI agent encountered a problem.' });
+    } else {
+      res.write(`data: ${JSON.stringify({ type: 'error', error: 'Internal server error' })}\n\n`);
+      res.end();
+    }
   }
 });
 

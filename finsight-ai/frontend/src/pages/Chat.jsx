@@ -3,75 +3,27 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext';
 import AnalyticsTab from '../components/AnalyticsTab';
 import { getDocuments } from '../utils/localDb';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 const API_URL = 'http://localhost:3000/api/chat';
 
-// ── Renders a single AI response — parses ## headings into styled sections ──
+// ── Renders a single AI response — uses React Markdown ──
 function AIMessage({ content }) {
-  const sections = parseAIResponse(content);
+  if (!content) return <TypingIndicator />;
+  
   return (
-    <div className="flex gap-4">
+    <div className="flex gap-4 mb-4">
       <div className="w-10 h-10 rounded-full bg-primary flex-shrink-0 flex items-center justify-center shadow-sm mt-1">
         <span className="text-white font-bold text-sm">₹</span>
       </div>
-      <div className="flex flex-col gap-3 flex-1">
-        {sections.map((section, i) => (
-          <div key={i} className={`rounded-xl p-5 border ${section.style}`}>
-            {section.label && (
-              <div className="flex items-center gap-2 mb-3">
-                <span className="text-lg">{section.icon}</span>
-                <span className={`font-label-caps text-label-caps ${section.labelColor}`}>{section.label}</span>
-              </div>
-            )}
-            <p className="text-on-surface-variant font-body-md text-sm leading-relaxed whitespace-pre-wrap">{section.text}</p>
-          </div>
-        ))}
+      <div className="flex-1 bg-surface-container-lowest border border-border rounded-xl p-5 shadow-sm overflow-x-auto prose prose-sm md:prose-base prose-emerald max-w-none text-on-surface-variant prose-headings:font-headline-sm prose-headings:text-primary prose-a:text-blue-600 prose-table:border-collapse prose-table:w-full prose-th:border prose-th:border-border prose-th:bg-surface-container-low prose-th:p-2 prose-td:border prose-td:border-border prose-td:p-2">
+        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+          {content}
+        </ReactMarkdown>
       </div>
     </div>
   );
-}
-
-function parseAIResponse(content) {
-  if (!content) return [{ text: '', style: 'bg-surface-container-lowest border-l-4 border-l-primary border-border', label: null, labelColor: '', icon: '' }];
-
-  // Split by ## headings
-  const lines = content.split('\n');
-  const sections = [];
-  let currentSection = null;
-
-  const sectionConfig = {
-    'FACT': { style: 'bg-surface-container-lowest border-l-4 border-l-primary border-border', label: 'FACT', labelColor: 'text-primary', icon: '📋' },
-    'ANALYSIS': { style: 'bg-surface-container-lowest border-l-4 border-l-blue-500 border-border', label: 'ANALYSIS', labelColor: 'text-blue-500', icon: '💡' },
-    'RECOMMENDATION': { style: 'bg-status-loan border-l-4 border-l-orange-500 border-border', label: 'RECOMMENDATION', labelColor: 'text-orange-600', icon: '✅' },
-    'RISK': { style: 'bg-status-loan border-l-4 border-l-red-500 border-border', label: 'RISK ALERT', labelColor: 'text-red-600', icon: '⚠️' },
-  };
-
-  for (const line of lines) {
-    // detect ## FACT, ## ANALYSIS, ## RECOMMENDATION etc.
-    const headingMatch = line.match(/^##\s+(.+)$/);
-    if (headingMatch) {
-      if (currentSection && currentSection.text.trim()) sections.push(currentSection);
-      const heading = headingMatch[1].trim().toUpperCase();
-      const matchedKey = Object.keys(sectionConfig).find(k => heading.includes(k));
-      if (matchedKey) {
-        currentSection = { ...sectionConfig[matchedKey], text: '' };
-      } else {
-        currentSection = { style: 'bg-surface-container-lowest border-border border', label: headingMatch[1].trim(), labelColor: 'text-primary', icon: '📌', text: '' };
-      }
-    } else {
-      if (!currentSection) {
-        currentSection = { style: 'bg-surface-container-lowest border-l-4 border-l-primary border-border', label: null, labelColor: '', icon: '', text: '' };
-      }
-      currentSection.text += (currentSection.text ? '\n' : '') + line;
-    }
-  }
-  if (currentSection && currentSection.text.trim()) sections.push(currentSection);
-
-  if (sections.length === 0) {
-    return [{ style: 'bg-surface-container-lowest border-l-4 border-l-primary border-border', label: null, labelColor: '', icon: '', text: content }];
-  }
-
-  return sections;
 }
 
 // ── Financial Summary Card ────────────────────────────────────────────────────
@@ -337,23 +289,63 @@ export default function Chat() {
         }),
       });
 
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Server error');
+      if (!res.ok) throw new Error('Server error');
 
-      setMessages(prev => [...prev, { role: 'assistant', content: data.answer }]);
+      setMessages(prev => [...prev, { role: 'assistant', content: '' }]);
       
-      if (data.sessionId && data.sessionId !== activeSessionId) {
-        setActiveSessionId(data.sessionId);
-        // Create a new session entry locally so it appears in the sidebar immediately
-        const newTitle = q.length > 30 ? q.substring(0, 30) + '...' : q;
-        setChatSessions(prev => [{ id: data.sessionId, title: newTitle, updated_at: new Date().toISOString() }, ...prev]);
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder("utf-8");
+      
+      let finalToolsUsed = [];
+      let currentSessionId = activeSessionId;
+      let buffer = '';
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n\n');
+        
+        buffer = lines.pop(); // keep the last potentially incomplete chunk in the buffer
+        
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const dataStr = line.replace('data: ', '').trim();
+            if (!dataStr) continue;
+            
+            try {
+              const data = JSON.parse(dataStr);
+              if (data.type === 'session') {
+                if (data.sessionId && data.sessionId !== activeSessionId) {
+                  currentSessionId = data.sessionId;
+                  setActiveSessionId(data.sessionId);
+                  const newTitle = q.length > 30 ? q.substring(0, 30) + '...' : q;
+                  setChatSessions(prev => [{ id: data.sessionId, title: newTitle, updated_at: new Date().toISOString() }, ...prev]);
+                }
+              } else if (data.type === 'content') {
+                setMessages(prev => {
+                  const newMsgs = [...prev];
+                  newMsgs[newMsgs.length - 1].content += data.content;
+                  return newMsgs;
+                });
+              } else if (data.type === 'done') {
+                finalToolsUsed = data.toolsUsed || [];
+              } else if (data.type === 'error') {
+                setError(data.error);
+              }
+            } catch(e) {
+              // Ignore incomplete JSON chunks in SSE stream parsing
+            }
+          }
+        }
       }
       
       let updatedAnalytics = false;
       const newAnalyticsData = {};
       
-      if (data.toolsUsed && Array.isArray(data.toolsUsed)) {
-        data.toolsUsed.forEach(tool => {
+      if (finalToolsUsed && Array.isArray(finalToolsUsed)) {
+        finalToolsUsed.forEach(tool => {
           if (tool.name === 'calculate_sip_maturity') { newAnalyticsData.sip = tool.result; updatedAnalytics = true; }
           if (tool.name === 'compare_loan_vs_invest') { newAnalyticsData.loanVsInvest = tool.result; updatedAnalytics = true; }
           if (tool.name === 'plan_monthly_cashflow') { newAnalyticsData.cashflow = tool.result; updatedAnalytics = true; }
@@ -365,17 +357,13 @@ export default function Chat() {
       if (updatedAnalytics) {
         setAnalyticsData(prev => {
           const newState = { ...prev, ...newAnalyticsData };
-          
-          // Save session-specific analytics to backend
-          const sessionIdToSave = data.sessionId || activeSessionId;
-          if (sessionIdToSave) {
-            fetch(`http://localhost:3000/api/chat-sessions/${sessionIdToSave}/analytics`, {
+          if (currentSessionId) {
+            fetch(`http://localhost:3000/api/chat-sessions/${currentSessionId}/analytics`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
               body: JSON.stringify({ analytics: newState })
             }).catch(err => console.error(err));
           }
-          
           return newState;
         });
         setHasNewAnalytics(true);

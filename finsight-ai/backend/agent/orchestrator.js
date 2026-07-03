@@ -93,7 +93,7 @@ const tools = [
   }
 ];
 
-async function runAgent({ userQuestion, documentContext, conversationHistory = [] }) {
+async function runAgent({ userQuestion, documentContext, conversationHistory = [], onContent }) {
   const MAX_DOC_LENGTH = 25000;
 
   let promptText = "";
@@ -118,69 +118,64 @@ async function runAgent({ userQuestion, documentContext, conversationHistory = [
   let maxIterations = 10;
 
   while (!isFinished && maxIterations-- > 0) {
-    let response;
+    let stream;
     try {
-      response = await client.chat.completions.create({
+      stream = await client.chat.completions.create({
         model: "llama-3.3-70b-versatile",
         messages: messages,
         tools: tools,
         tool_choice: "auto",
         parallel_tool_calls: false,
+        stream: true,
       });
     } catch (groqErr) {
-      if (groqErr.status === 400 && groqErr.error && groqErr.error.error && groqErr.error.error.code === 'tool_use_failed') {
-        const failedGen = groqErr.error.error.failed_generation || "";
-        const funcMatch = failedGen.match(/<function=["']?(.*?)["']?>/);
-        
-        if (funcMatch) {
-          const functionName = funcMatch[1];
-          let jsonString = failedGen.replace(/<function[^>]*>/, '').replace(/<\/function>.*/s, '').trim();
-          let functionArgs = {};
-          
-          try {
-            jsonString = jsonString.replace(/}}+$/, '}').replace(/\]+$/, ']');
-            functionArgs = JSON.parse(jsonString);
-          } catch (e) {
-            console.error("Failed to parse hallucinated JSON:", jsonString);
-          }
+      throw groqErr;
+    }
 
-          let result;
-          try {
-            result = executeToolCall(functionName, functionArgs);
-            toolsUsed.push({ name: functionName, result });
-          } catch (err) {
-            result = { error: err.message };
-          }
+    let chunkedContent = "";
+    let toolCallsMap = {};
 
-          messages.push({ role: "assistant", content: failedGen });
-          messages.push({
-            role: "user",
-            content: `Tool "${functionName}" returned this result: ${JSON.stringify(result)}\n\nPlease now provide a clear financial analysis using this data.`
-          });
-          continue;
-        } else {
-          // Fallback: Retry without tools if it hallucinates something completely unparseable
-          response = await client.chat.completions.create({
-            model: "llama-3.3-70b-versatile",
-            messages: messages,
-          });
+    for await (const chunk of stream) {
+      const delta = chunk.choices[0]?.delta;
+      if (!delta) continue;
+
+      if (delta.content) {
+        chunkedContent += delta.content;
+        if (onContent) {
+          onContent(delta.content);
         }
-      } else {
-        throw groqErr;
+      }
+
+      if (delta.tool_calls) {
+        for (const tc of delta.tool_calls) {
+          if (!toolCallsMap[tc.index]) {
+            toolCallsMap[tc.index] = { id: tc.id || "", type: "function", function: { name: "", arguments: "" } };
+          }
+          if (tc.id) toolCallsMap[tc.index].id += tc.id;
+          if (tc.function?.name) toolCallsMap[tc.index].function.name += tc.function.name;
+          if (tc.function?.arguments) toolCallsMap[tc.index].function.arguments += tc.function.arguments;
+        }
       }
     }
 
-    const choice = response.choices[0];
-    const responseMessage = choice.message;
-    const finishReason = choice.finish_reason;
+    const assembledToolCalls = Object.values(toolCallsMap);
 
-    // ── Case 1: proper API-level tool_calls ──────────────────────────────
-    if (responseMessage.tool_calls && responseMessage.tool_calls.length > 0) {
-      messages.push(responseMessage);
+    if (assembledToolCalls.length > 0) {
+      messages.push({
+        role: "assistant",
+        content: chunkedContent || null,
+        tool_calls: assembledToolCalls
+      });
 
-      for (const toolCall of responseMessage.tool_calls) {
+      for (const toolCall of assembledToolCalls) {
         const functionName = toolCall.function.name;
-        const functionArgs = JSON.parse(toolCall.function.arguments);
+        let functionArgs = {};
+        try {
+          functionArgs = JSON.parse(toolCall.function.arguments || "{}");
+        } catch (e) {
+          console.error("Failed to parse tool arguments:", toolCall.function.arguments);
+        }
+
         let result;
         try {
           result = executeToolCall(functionName, functionArgs);
@@ -196,61 +191,11 @@ async function runAgent({ userQuestion, documentContext, conversationHistory = [
           content: JSON.stringify(result),
         });
       }
-      continue; // loop again for the model's final answer
+      continue; // loop to send tool result to model
+    } else {
+      isFinished = true;
+      finalContent = chunkedContent;
     }
-
-    // ── Case 2: model returned a JSON tool-call string in content (fallback) ──
-    const contentStr = (responseMessage.content || "").trim();
-    const lines = contentStr.split('\n');
-    let parsedToolCalls = [];
-    
-    for (let line of lines) {
-      let trimmed = line.trim();
-      if (trimmed.startsWith("{") && trimmed.includes("\"type\"") && trimmed.includes("\"name\"")) {
-        try {
-          parsedToolCalls.push(JSON.parse(trimmed));
-        } catch (_) {}
-      }
-    }
-
-    if (parsedToolCalls.length > 0) {
-      messages.push({ role: "assistant", content: contentStr });
-      
-      for (const parsedToolCall of parsedToolCalls) {
-        if (parsedToolCall && parsedToolCall.name && (parsedToolCall.parameters || parsedToolCall.arguments)) {
-          const functionName = parsedToolCall.name;
-          const functionArgs = parsedToolCall.parameters || parsedToolCall.arguments || {};
-          // Coerce string numbers to actual numbers
-          const coercedArgs = {};
-          for (const [k, v] of Object.entries(functionArgs)) {
-            coercedArgs[k] = isNaN(v) ? v : Number(v);
-          }
-
-          let result;
-          try {
-            result = executeToolCall(functionName, coercedArgs);
-            toolsUsed.push({ name: functionName, result });
-          } catch (err) {
-            result = { error: err.message };
-          }
-
-          messages.push({
-            role: "user",
-            content: `Tool "${functionName}" returned this result: ${JSON.stringify(result)}`
-          });
-        }
-      }
-      
-      messages.push({
-        role: "user",
-        content: `Please now provide a clear financial analysis using the data returned from the tools. Format your answer nicely for the user, and DO NOT output the raw JSON tool calls again.`
-      });
-      continue;
-    }
-
-    // ── Case 3: normal text answer — done ───────────────────────────────
-    isFinished = true;
-    finalContent = responseMessage.content;
   }
 
   return { answer: finalContent, toolsUsed };
