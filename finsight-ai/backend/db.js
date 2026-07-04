@@ -1,23 +1,20 @@
-const sqlite3 = require('sqlite3');
-const { open } = require('sqlite');
-const path = require('path');
+const { Pool } = require('pg');
 
-const dbPath = path.join(__dirname, 'database.sqlite');
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+});
 
-let dbPromise = null;
+let isInitialized = false;
 
 async function getDb() {
-  if (!dbPromise) {
-    dbPromise = open({
-      filename: dbPath,
-      driver: sqlite3.Database
-    }).then(async (db) => {
+  if (!isInitialized) {
+    try {
       // Create tables if they don't exist
-      await db.exec(`
+      await pool.query(`
         CREATE TABLE IF NOT EXISTS users (
           id TEXT PRIMARY KEY,
-          firstName TEXT,
-          lastName TEXT,
+          "firstName" TEXT,
+          "lastName" TEXT,
           email TEXT UNIQUE,
           password TEXT,
           created_at TEXT
@@ -37,7 +34,7 @@ async function getDb() {
           FOREIGN KEY(user_id) REFERENCES users(id)
         );
         CREATE TABLE IF NOT EXISTS chat_history (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          id SERIAL PRIMARY KEY,
           user_id TEXT,
           session_id TEXT,
           role TEXT,
@@ -48,37 +45,30 @@ async function getDb() {
         );
       `);
 
-      // Migration: Check if session_id exists in chat_history, if not add it
-      const columns = await db.all("PRAGMA table_info(chat_history)");
-      const hasSessionId = columns.some(col => col.name === 'session_id');
-      if (!hasSessionId) {
-        await db.exec('ALTER TABLE chat_history ADD COLUMN session_id TEXT');
-      }
-
-      // Migration: Check if analytics_json exists in chat_sessions
-      const sessionCols = await db.all("PRAGMA table_info(chat_sessions)");
-      const hasAnalytics = sessionCols.some(col => col.name === 'analytics_json');
-      if (!hasAnalytics) {
-        await db.exec('ALTER TABLE chat_sessions ADD COLUMN analytics_json TEXT');
-      }
-
-      return db;
-    });
+      isInitialized = true;
+    } catch (err) {
+      console.error("Database initialization failed:", err);
+      throw err;
+    }
   }
-  return dbPromise;
+  return pool;
 }
+
+// Call getDb once to initialize tables on startup
+getDb().catch(console.error);
 
 async function getUserByEmail(email) {
   const db = await getDb();
-  return db.get('SELECT * FROM users WHERE email = ?', [email]);
+  const res = await db.query('SELECT * FROM users WHERE email = $1', [email]);
+  return res.rows[0];
 }
 
 async function createUser(user) {
   const db = await getDb();
   const id = Date.now().toString();
   const created_at = new Date().toISOString();
-  await db.run(
-    'INSERT INTO users (id, firstName, lastName, email, password, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+  await db.query(
+    'INSERT INTO users (id, "firstName", "lastName", email, password, created_at) VALUES ($1, $2, $3, $4, $5, $6)',
     [id, user.firstName, user.lastName, user.email, user.password, created_at]
   );
   return { id, ...user, created_at };
@@ -86,31 +76,32 @@ async function createUser(user) {
 
 async function updatePortfolioSummary(userId, summaryJson) {
   const db = await getDb();
-  await db.run(`
-    INSERT INTO portfolios (user_id, summary_json) VALUES (?, ?)
+  await db.query(`
+    INSERT INTO portfolios (user_id, summary_json) VALUES ($1, $2)
     ON CONFLICT(user_id) DO UPDATE SET summary_json = excluded.summary_json
   `, [userId, JSON.stringify(summaryJson)]);
 }
 
 async function updatePortfolioAnalytics(userId, analyticsJson) {
   const db = await getDb();
-  await db.run(`
-    INSERT INTO portfolios (user_id, analytics_json) VALUES (?, ?)
+  await db.query(`
+    INSERT INTO portfolios (user_id, analytics_json) VALUES ($1, $2)
     ON CONFLICT(user_id) DO UPDATE SET analytics_json = excluded.analytics_json
   `, [userId, JSON.stringify(analyticsJson)]);
 }
 
 async function getPortfolio(userId) {
   const db = await getDb();
-  return db.get('SELECT * FROM portfolios WHERE user_id = ?', [userId]);
+  const res = await db.query('SELECT * FROM portfolios WHERE user_id = $1', [userId]);
+  return res.rows[0];
 }
 
 async function createChatSession(userId, title) {
   const db = await getDb();
   const sessionId = Date.now().toString();
   const updatedAt = new Date().toISOString();
-  await db.run(
-    'INSERT INTO chat_sessions (id, user_id, title, updated_at) VALUES (?, ?, ?, ?)',
+  await db.query(
+    'INSERT INTO chat_sessions (id, user_id, title, updated_at) VALUES ($1, $2, $3, $4)',
     [sessionId, userId, title, updatedAt]
   );
   return { id: sessionId, title, updated_at: updatedAt };
@@ -118,50 +109,54 @@ async function createChatSession(userId, title) {
 
 async function getChatSessions(userId) {
   const db = await getDb();
-  return db.all('SELECT * FROM chat_sessions WHERE user_id = ? ORDER BY updated_at DESC', [userId]);
+  const res = await db.query('SELECT * FROM chat_sessions WHERE user_id = $1 ORDER BY updated_at DESC', [userId]);
+  return res.rows;
 }
 
 async function getChatSession(sessionId) {
   const db = await getDb();
-  return db.get('SELECT * FROM chat_sessions WHERE id = ?', [sessionId]);
+  const res = await db.query('SELECT * FROM chat_sessions WHERE id = $1', [sessionId]);
+  return res.rows[0];
 }
 
 async function updateChatSessionAnalytics(sessionId, analyticsJson) {
   const db = await getDb();
-  await db.run('UPDATE chat_sessions SET analytics_json = ? WHERE id = ?', [analyticsJson, sessionId]);
+  await db.query('UPDATE chat_sessions SET analytics_json = $1 WHERE id = $2', [analyticsJson, sessionId]);
 }
 
 async function addChatMessage(userId, sessionId, role, content) {
   const db = await getDb();
   const timestamp = new Date().toISOString();
   
-  await db.run(
-    'INSERT INTO chat_history (user_id, session_id, role, content, timestamp) VALUES (?, ?, ?, ?, ?)',
+  await db.query(
+    'INSERT INTO chat_history (user_id, session_id, role, content, timestamp) VALUES ($1, $2, $3, $4, $5)',
     [userId, sessionId, role, content, timestamp]
   );
 
   // Update session updated_at
   if (sessionId) {
-    await db.run('UPDATE chat_sessions SET updated_at = ? WHERE id = ?', [timestamp, sessionId]);
+    await db.query('UPDATE chat_sessions SET updated_at = $1 WHERE id = $2', [timestamp, sessionId]);
   }
 }
 
 async function getChatHistory(userId, sessionId, limit = 50) {
   const db = await getDb();
   if (sessionId) {
-    return db.all('SELECT * FROM chat_history WHERE user_id = ? AND session_id = ? ORDER BY timestamp ASC LIMIT ?', [userId, sessionId, limit]);
+    const res = await db.query('SELECT * FROM chat_history WHERE user_id = $1 AND session_id = $2 ORDER BY timestamp ASC LIMIT $3', [userId, sessionId, limit]);
+    return res.rows;
   } else {
     // Legacy support for messages without session_id
-    return db.all('SELECT * FROM chat_history WHERE user_id = ? AND session_id IS NULL ORDER BY timestamp ASC LIMIT ?', [userId, limit]);
+    const res = await db.query('SELECT * FROM chat_history WHERE user_id = $1 AND session_id IS NULL ORDER BY timestamp ASC LIMIT $2', [userId, limit]);
+    return res.rows;
   }
 }
 
 async function deleteChatSession(userId, sessionId) {
   const db = await getDb();
   // First delete associated messages
-  await db.run('DELETE FROM chat_history WHERE user_id = ? AND session_id = ?', [userId, sessionId]);
+  await db.query('DELETE FROM chat_history WHERE user_id = $1 AND session_id = $2', [userId, sessionId]);
   // Then delete the session
-  await db.run('DELETE FROM chat_sessions WHERE id = ? AND user_id = ?', [sessionId, userId]);
+  await db.query('DELETE FROM chat_sessions WHERE id = $1 AND user_id = $2', [sessionId, userId]);
 }
 
 module.exports = {
