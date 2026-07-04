@@ -5,8 +5,9 @@ import AnalyticsTab from '../components/AnalyticsTab';
 import { getDocuments } from '../utils/localDb';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { API_BASE_URL } from '../config';
 
-const API_URL = 'http://localhost:3000/api/chat';
+const API_URL = `${API_BASE_URL}/api/chat`;
 
 // ── Renders a single AI response — uses React Markdown ──
 function AIMessage({ content }) {
@@ -150,7 +151,7 @@ export default function Chat() {
   useEffect(() => {
     if (token) {
       // Fetch Chat Sessions
-      fetch('http://localhost:3000/api/chat-sessions', {
+      fetch(`${API_BASE_URL}/api/chat-sessions`, {
         headers: { 'Authorization': `Bearer ${token}` }
       })
       .then(res => res.ok ? res.json() : [])
@@ -158,7 +159,7 @@ export default function Chat() {
       .catch(console.error);
       
       // Fetch User Data for accurate summary and baseline analytics
-      fetch('http://localhost:3000/api/user-data', {
+      fetch(`${API_BASE_URL}/api/user-data`, {
         headers: { 'Authorization': `Bearer ${token}` }
       })
       .then(res => res.ok ? res.json() : null)
@@ -175,7 +176,7 @@ export default function Chat() {
   // Load a specific session's history and analytics
   useEffect(() => {
     if (activeSessionId && token) {
-      fetch(`http://localhost:3000/api/chat-sessions/${activeSessionId}`, {
+      fetch(`${API_BASE_URL}/api/chat-sessions/${activeSessionId}`, {
         headers: { 'Authorization': `Bearer ${token}` }
       })
       .then(res => res.json())
@@ -200,7 +201,7 @@ export default function Chat() {
       const fetchSummary = async () => {
         setIsExtractingSummary(true);
         try {
-          const res = await fetch('http://localhost:3000/api/extract-summary', {
+          const res = await fetch(`${API_BASE_URL}/api/extract-summary`, {
             method: 'POST',
             headers: { 
               'Content-Type': 'application/json',
@@ -234,7 +235,7 @@ export default function Chat() {
     if (!window.confirm('Are you sure you want to delete this chat session?')) return;
     
     try {
-      const res = await fetch(`http://localhost:3000/api/chat-sessions/${sessionId}`, {
+      const res = await fetch(`${API_BASE_URL}/api/chat-sessions/${sessionId}`, {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${token}` }
       });
@@ -358,7 +359,7 @@ export default function Chat() {
         setAnalyticsData(prev => {
           const newState = { ...prev, ...newAnalyticsData };
           if (currentSessionId) {
-            fetch(`http://localhost:3000/api/chat-sessions/${currentSessionId}/analytics`, {
+            fetch(`${API_BASE_URL}/api/chat-sessions/${currentSessionId}/analytics`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
               body: JSON.stringify({ analytics: newState })

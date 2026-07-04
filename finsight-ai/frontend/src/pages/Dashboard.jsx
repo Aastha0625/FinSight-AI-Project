@@ -2,6 +2,7 @@ import React, { useContext, useState, useEffect } from 'react';
 import { AuthContext } from '../context/AuthContext';
 import { useNavigate, Link } from 'react-router-dom';
 import { getDocuments, deleteDocument } from '../utils/localDb';
+import { API_BASE_URL } from '../config';
 
 export default function Dashboard() {
   const { user, token } = useContext(AuthContext);
@@ -17,7 +18,7 @@ export default function Dashboard() {
     const fetchData = async () => {
       try {
         if (token) {
-          const res = await fetch('http://localhost:3000/api/user-data', {
+          const res = await fetch(`${API_BASE_URL}/api/user-data`, {
             headers: { 'Authorization': `Bearer ${token}` }
           });
           
@@ -37,7 +38,7 @@ export default function Dashboard() {
             }
           
           // Fetch chat sessions for Recent Insights
-          const sessionRes = await fetch('http://localhost:3000/api/chat-sessions', {
+          const sessionRes = await fetch(`${API_BASE_URL}/api/chat-sessions`, {
             headers: { 'Authorization': `Bearer ${token}` }
           });
           if (sessionRes.ok) {
