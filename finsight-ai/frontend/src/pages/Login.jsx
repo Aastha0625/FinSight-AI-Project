@@ -2,11 +2,11 @@ import React, { useState, useContext } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext';
 import { API_BASE_URL } from '../config';
+import toast from 'react-hot-toast';
 
 export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
   const navigate = useNavigate();
   const { login } = useContext(AuthContext);
 
@@ -16,16 +16,18 @@ export default function Login() {
       const res = await fetch(`${API_BASE_URL}/api/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ email, password })
       });
       const data = await res.json();
       
       if (!res.ok) throw new Error(data.error || 'Failed to login');
       
-      login(data.user, data.token);
+      login(data.user);
+      toast.success('Welcome back!');
       navigate('/dashboard');
     } catch (err) {
-      setError(err.message);
+      toast.error(err.message);
     }
   };
 
@@ -38,8 +40,6 @@ export default function Login() {
       <div className="bg-surface-container-lowest border border-border p-8 rounded-2xl w-full max-w-md shadow-xl">
         <h1 className="font-headline-sm text-3xl font-bold text-on-surface mb-2">Welcome Back</h1>
         <p className="text-on-surface-variant font-body-md mb-8">Sign in to access your financial dashboard.</p>
-        
-        {error && <div className="bg-error-container text-on-error-container p-3 rounded-lg mb-6 text-sm border border-error/20">{error}</div>}
         
         <form onSubmit={handleSubmit} className="flex flex-col gap-5">
           <div>

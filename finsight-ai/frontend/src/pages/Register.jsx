@@ -2,12 +2,12 @@ import React, { useState, useContext } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext';
 import { API_BASE_URL } from '../config';
+import toast from 'react-hot-toast';
 
 export default function Register() {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
   const navigate = useNavigate();
   const { login } = useContext(AuthContext);
 
@@ -17,16 +17,18 @@ export default function Register() {
       const res = await fetch(`${API_BASE_URL}/api/auth/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ name, email, password })
       });
       const data = await res.json();
       
       if (!res.ok) throw new Error(data.error || 'Failed to register');
       
-      login(data.user, data.token);
+      login(data.user);
+      toast.success('Account created successfully!');
       navigate('/dashboard');
     } catch (err) {
-      setError(err.message);
+      toast.error(err.message);
     }
   };
 
@@ -38,9 +40,7 @@ export default function Register() {
       </Link>
       <div className="bg-surface-container-lowest border border-border p-8 rounded-2xl w-full max-w-md shadow-xl">
         <h1 className="font-headline-sm text-3xl font-bold text-on-surface mb-2">Create Account</h1>
-        <p className="text-on-surface-variant font-body-md mb-8">Join FinSight AI for intelligent portfolio tracking.</p>
-        
-        {error && <div className="bg-error-container text-on-error-container p-3 rounded-lg mb-6 text-sm border border-error/20">{error}</div>}
+        <p className="text-on-surface-variant font-body-md mb-8">Join FinSight AI to master your finances.</p>
         
         <form onSubmit={handleSubmit} className="flex flex-col gap-5">
           <div>

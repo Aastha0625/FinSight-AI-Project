@@ -2,8 +2,14 @@ require('dotenv').config();
 
 const express = require('express');
 const cors = require('cors');
+const cookieParser = require('cookie-parser');
+const rateLimit = require('express-rate-limit');
+const { z } = require('zod');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
+const winston = require('winston');
+const morgan = require('morgan');
 const db = require('./db');
 const { verifyToken, JWT_SECRET } = require('./middleware/auth');
 const { runAgent } = require('./agent/orchestrator');
@@ -12,32 +18,88 @@ const { extractSummary } = require('./agent/extractor');
 const app = express();
 const PORT = process.env.PORT || 5000;
 
+// ── Logger ──────────────────────────────────────────────────────────────────
+const logger = winston.createLogger({
+  level: 'info',
+  format: winston.format.combine(
+    winston.format.timestamp(),
+    winston.format.json()
+  ),
+  transports: [
+    new winston.transports.Console({
+      format: winston.format.combine(
+        winston.format.colorize(),
+        winston.format.simple()
+      )
+    })
+  ]
+});
+
 // ── Middleware ──────────────────────────────────────────────────────────────
-const allowedOrigins = ['http://localhost:5173', 'http://localhost:5174'];
+const allowedOrigins = ['http://localhost:5173', 'http://localhost:5174', 'http://127.0.0.1:5173', 'http://127.0.0.1:5174'];
 if (process.env.FRONTEND_URL) {
   allowedOrigins.push(process.env.FRONTEND_URL);
 }
 
-app.use(cors({
-  origin: allowedOrigins,
-  methods: ['GET', 'POST', 'PUT', 'DELETE'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-}));
+const corsOptions = {
+  origin: function (origin, callback) {
+    if (!origin || allowedOrigins.includes(origin) || process.env.NODE_ENV !== 'production') {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
+  credentials: true,
+};
 
+app.use(cors(corsOptions));
+
+app.use(cookieParser());
 app.use(express.json({ limit: '2mb' }));
+app.use(morgan('combined', { stream: { write: message => logger.info(message.trim()) } }));
+
+// ── Rate Limiting ───────────────────────────────────────────────────────────
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 150, // limit each IP to 150 requests per windowMs
+  message: { error: 'Too many requests from this IP, please try again after 15 minutes' }
+});
+
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  message: { error: 'Too many authentication attempts, please try again later' }
+});
+
+app.use('/api/', apiLimiter);
 
 // ── GET /api/health ─────────────────────────────────────────────────────────
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', message: 'FinSight AI running' });
 });
 
+// ── Zod Schemas ─────────────────────────────────────────────────────────────
+const registerSchema = z.object({
+  name: z.string().min(2, "Name must be at least 2 characters"),
+  email: z.string().email("Invalid email address"),
+  password: z.string().min(8, "Password must be at least 8 characters")
+});
+
+const loginSchema = z.object({
+  email: z.string().email("Invalid email address"),
+  password: z.string().min(1, "Password is required")
+});
+
 // ── POST /api/auth/register ────────────────────────────────────────────────
-app.post('/api/auth/register', async (req, res) => {
+app.post('/api/auth/register', authLimiter, async (req, res) => {
   try {
-    const { name, email, password } = req.body;
-    if (!name || !email || !password) {
-      return res.status(400).json({ error: 'Name, email, and password are required.' });
+    const parsed = registerSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: parsed.error.issues && parsed.error.issues.length > 0 ? parsed.error.issues[0].message : 'Invalid input' });
     }
+    const { name, email, password } = parsed.data;
 
     const existingUser = await db.getUserByEmail(email);
     if (existingUser) {
@@ -53,22 +115,41 @@ app.post('/api/auth/register', async (req, res) => {
     const lastName = parts.slice(1).join(' ');
 
     const newUser = await db.createUser({ firstName, lastName, email, password: password_hash });
-    const token = jwt.sign({ id: newUser.id, email: newUser.email }, JWT_SECRET, { expiresIn: '7d' });
+    const accessToken = jwt.sign({ id: newUser.id, email: newUser.email }, JWT_SECRET, { expiresIn: '15m' });
+    const refreshToken = crypto.randomBytes(40).toString('hex');
+    const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days
     
-    res.status(201).json({ token, user: { id: newUser.id, firstName: newUser.firstName, email: newUser.email } });
+    await db.saveRefreshToken(refreshToken, newUser.id, expiresAt);
+    
+    res.cookie('accessToken', accessToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict',
+      maxAge: 15 * 60 * 1000 // 15 mins
+    });
+
+    res.cookie('refreshToken', refreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict',
+      maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
+    });
+
+    res.status(201).json({ user: { id: newUser.id, firstName: newUser.firstName, email: newUser.email } });
   } catch (err) {
-    console.error(err);
+    logger.error(`Registration error: ${err.message}`, { stack: err.stack });
     res.status(500).json({ error: 'Server error during registration.' });
   }
 });
 
 // ── POST /api/auth/login ───────────────────────────────────────────────────
-app.post('/api/auth/login', async (req, res) => {
+app.post('/api/auth/login', authLimiter, async (req, res) => {
   try {
-    const { email, password } = req.body;
-    if (!email || !password) {
-      return res.status(400).json({ error: 'Email and password are required.' });
+    const parsed = loginSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: parsed.error.issues && parsed.error.issues.length > 0 ? parsed.error.issues[0].message : 'Invalid credentials' });
     }
+    const { email, password } = parsed.data;
 
     const user = await db.getUserByEmail(email);
     if (!user) {
@@ -80,11 +161,57 @@ app.post('/api/auth/login', async (req, res) => {
       return res.status(400).json({ error: 'Invalid email or password.' });
     }
 
-    const token = jwt.sign({ id: user.id, email: user.email }, JWT_SECRET, { expiresIn: '7d' });
-    res.json({ token, user: { id: user.id, firstName: user.firstName, email: user.email } });
+    const accessToken = jwt.sign({ id: user.id, email: user.email }, JWT_SECRET, { expiresIn: '15m' });
+    const refreshToken = crypto.randomBytes(40).toString('hex');
+    const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days
+    
+    await db.saveRefreshToken(refreshToken, user.id, expiresAt);
+    
+    res.cookie('accessToken', accessToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict',
+      maxAge: 15 * 60 * 1000 // 15 mins
+    });
+
+    res.cookie('refreshToken', refreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict',
+      maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
+    });
+
+    res.json({ user: { id: user.id, firstName: user.firstName, email: user.email } });
   } catch (err) {
-    console.error(err);
+    logger.error(`Login error: ${err.message}`, { stack: err.stack });
     res.status(500).json({ error: 'Server error during login.' });
+  }
+});
+
+// ── POST /api/auth/logout ──────────────────────────────────────────────────
+app.post('/api/auth/logout', async (req, res) => {
+  if (req.cookies?.refreshToken) {
+    await db.deleteRefreshToken(req.cookies.refreshToken).catch(() => {});
+  }
+  const cookieOptions = {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict'
+  };
+  res.clearCookie('accessToken', cookieOptions);
+  res.clearCookie('refreshToken', cookieOptions);
+  res.json({ success: true });
+});
+
+// ── GET /api/auth/me ───────────────────────────────────────────────────────
+app.get('/api/auth/me', verifyToken, async (req, res) => {
+  try {
+    const user = await db.getUserByEmail(req.user.email);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    res.json({ user: { id: user.id, firstName: user.firstName, email: user.email } });
+  } catch (err) {
+    logger.error(`Me error: ${err.message}`, { stack: err.stack });
+    res.status(500).json({ error: 'Server error fetching user.' });
   }
 });
 
@@ -104,7 +231,7 @@ app.get('/api/user-data', verifyToken, async (req, res) => {
 
     res.json({ summary, analytics, chatHistory });
   } catch (err) {
-    console.error(err);
+    logger.error(`Error: ${err.message}`, { stack: err.stack });(err);
     res.status(500).json({ error: 'Server error fetching user data.' });
   }
 });
@@ -120,7 +247,7 @@ app.post('/api/sync-data', verifyToken, async (req, res) => {
     
     res.json({ success: true });
   } catch (err) {
-    console.error(err);
+    logger.error(`Error: ${err.message}`, { stack: err.stack });(err);
     res.status(500).json({ error: 'Server error syncing data.' });
   }
 });
@@ -132,7 +259,7 @@ app.get('/api/chat-sessions', verifyToken, async (req, res) => {
     const sessions = await db.getChatSessions(userId);
     res.json(sessions);
   } catch (err) {
-    console.error(err);
+    logger.error(`Error: ${err.message}`, { stack: err.stack });(err);
     res.status(500).json({ error: 'Server error fetching chat sessions.' });
   }
 });
@@ -152,7 +279,7 @@ app.get('/api/chat-sessions/:id', verifyToken, async (req, res) => {
     
     res.json({ history, analytics });
   } catch (err) {
-    console.error(err);
+    logger.error(`Error: ${err.message}`, { stack: err.stack });(err);
     res.status(500).json({ error: 'Server error fetching session history.' });
   }
 });
@@ -165,7 +292,7 @@ app.delete('/api/chat-sessions/:id', verifyToken, async (req, res) => {
     await db.deleteChatSession(userId, sessionId);
     res.json({ success: true });
   } catch (err) {
-    console.error(err);
+    logger.error(`Error: ${err.message}`, { stack: err.stack });(err);
     res.status(500).json({ error: 'Server error deleting chat session.' });
   }
 });
@@ -178,7 +305,7 @@ app.post('/api/chat-sessions/:id/analytics', verifyToken, async (req, res) => {
     await db.updateChatSessionAnalytics(sessionId, JSON.stringify(analytics));
     res.json({ success: true });
   } catch (err) {
-    console.error(err);
+    logger.error(`Error: ${err.message}`, { stack: err.stack });(err);
     res.status(500).json({ error: 'Server error saving session analytics.' });
   }
 });
@@ -233,7 +360,7 @@ app.post('/api/chat', verifyToken, async (req, res) => {
     res.write(`data: ${JSON.stringify({ type: 'done', answer: result.answer, toolsUsed: result.toolsUsed, sessionId })}\n\n`);
     res.end();
   } catch (err) {
-    console.error('[/api/chat] Error:', err.message || err);
+    logger.error(`Error: ${err.message}`, { stack: err.stack });('[/api/chat] Error:', err.message || err);
     if (!res.headersSent) {
       res.status(500).json({ error: 'Internal server error. The AI agent encountered a problem.' });
     } else {
@@ -259,13 +386,21 @@ app.post('/api/extract-summary', verifyToken, async (req, res) => {
     
     res.json(summary);
   } catch (err) {
-    console.error('[/api/extract-summary] Error:', err.message || err);
+    logger.error(`Error: ${err.message}`, { stack: err.stack });('[/api/extract-summary] Error:', err.message || err);
     res.status(500).json({ error: 'Failed to extract summary' });
+  }
+});
+
+// ── Global Error Handler ────────────────────────────────────────────────────
+app.use((err, req, res, next) => {
+  logger.error(`Unhandled exception: ${err.message}`, { stack: err.stack });
+  if (!res.headersSent) {
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // ── Start ───────────────────────────────────────────────────────────────────
 app.listen(PORT, () => {
-  console.log(`✅ FinSight AI backend running on http://localhost:${PORT}`);
-  console.log(`   Health check → http://localhost:${PORT}/api/health`);
+  logger.info(`✅ FinSight AI backend running on http://localhost:${PORT}`);
+  logger.info(`   Health check → http://localhost:${PORT}/api/health`);
 });

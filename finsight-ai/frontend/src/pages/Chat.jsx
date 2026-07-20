@@ -5,9 +5,70 @@ import AnalyticsTab from '../components/AnalyticsTab';
 import { getDocuments } from '../utils/localDb';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import toast from 'react-hot-toast';
+import { useReactToPrint } from 'react-to-print';
+import { BarChart, Bar, LineChart, Line, PieChart, Pie, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer, Cell } from 'recharts';
 import { API_BASE_URL } from '../config';
 
 const API_URL = `${API_BASE_URL}/api/chat`;
+
+const COLORS = ['#16A34A', '#0061A4', '#8B4000', '#F59E0B', '#6366F1'];
+
+function ChartRenderer({ jsonStr }) {
+  try {
+    const parsed = JSON.parse(jsonStr);
+    const { type, data } = parsed;
+    
+    if (!data || !Array.isArray(data)) throw new Error("Invalid chart data");
+
+    const renderChart = () => {
+      if (type === 'bar') {
+        return (
+          <BarChart data={data} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
+            <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fontSize: 12}} />
+            <YAxis axisLine={false} tickLine={false} tick={{fontSize: 12}} />
+            <RechartsTooltip cursor={{fill: '#f3f4f6'}} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+            <Legend wrapperStyle={{ fontSize: '12px' }} />
+            <Bar dataKey="value" fill="#16A34A" radius={[4, 4, 0, 0]} />
+          </BarChart>
+        );
+      } else if (type === 'line') {
+        return (
+          <LineChart data={data} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
+            <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fontSize: 12}} />
+            <YAxis axisLine={false} tickLine={false} tick={{fontSize: 12}} />
+            <RechartsTooltip contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+            <Legend wrapperStyle={{ fontSize: '12px' }} />
+            <Line type="monotone" dataKey="value" stroke="#16A34A" strokeWidth={3} dot={{ r: 4 }} activeDot={{ r: 8 }} />
+          </LineChart>
+        );
+      } else if (type === 'pie') {
+        return (
+          <PieChart margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
+            <Pie data={data} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} label={{fontSize: 12}}>
+              {data.map((entry, index) => <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />)}
+            </Pie>
+            <RechartsTooltip contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+            <Legend wrapperStyle={{ fontSize: '12px' }} />
+          </PieChart>
+        );
+      }
+      return <div className="text-error p-4 text-sm font-bold">Unsupported chart type: {type}</div>;
+    };
+
+    return (
+      <div className="w-full h-[300px] bg-white border border-border rounded-xl p-4 my-4 shadow-sm" style={{ breakInside: 'avoid' }}>
+        <ResponsiveContainer width="100%" height="100%">
+          {renderChart()}
+        </ResponsiveContainer>
+      </div>
+    );
+  } catch (e) {
+    return <div className="text-error bg-error-container p-4 rounded-xl text-sm border border-error/20 my-4">Failed to render chart: Invalid JSON format.</div>;
+  }
+}
 
 // ── Renders a single AI response — uses React Markdown ──
 function AIMessage({ content }) {
@@ -18,8 +79,19 @@ function AIMessage({ content }) {
       <div className="w-10 h-10 rounded-full bg-primary flex-shrink-0 flex items-center justify-center shadow-sm mt-1">
         <span className="text-white font-bold text-sm">₹</span>
       </div>
-      <div className="flex-1 bg-surface-container-lowest border border-border rounded-xl p-5 shadow-sm overflow-x-auto prose prose-sm md:prose-base prose-emerald max-w-none text-on-surface-variant prose-headings:font-headline-sm prose-headings:text-primary prose-a:text-blue-600 prose-table:border-collapse prose-table:w-full prose-th:border prose-th:border-border prose-th:bg-surface-container-low prose-th:p-2 prose-td:border prose-td:border-border prose-td:p-2">
-        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+      <div className="flex-1 bg-surface-container-lowest border border-border rounded-xl p-5 shadow-sm overflow-x-auto prose prose-sm md:prose-base prose-emerald max-w-none text-on-surface-variant prose-headings:font-headline-sm prose-headings:text-primary prose-a:text-blue-600 prose-table:border-collapse prose-table:w-full prose-th:border prose-th:border-border prose-th:bg-surface-container-low prose-th:p-2 prose-td:border prose-td:border-border prose-td:p-2" style={{ breakInside: 'avoid' }}>
+        <ReactMarkdown 
+          remarkPlugins={[remarkGfm]}
+          components={{
+            code({node, inline, className, children, ...props}) {
+              const match = /language-(\w+)/.exec(className || '');
+              if (!inline && match && match[1] === 'chart') {
+                return <ChartRenderer jsonStr={String(children).replace(/\n$/, '')} />;
+              }
+              return <code className={className} {...props}>{children}</code>;
+            }
+          }}
+        >
           {content}
         </ReactMarkdown>
       </div>
@@ -128,11 +200,17 @@ export default function Chat() {
     return location.state?.sessionId || null;
   });
   const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState(null);
 
   const chatContainerRef = useRef(null);
   const textareaRef = useRef(null);
-  const { token, logout, user } = useContext(AuthContext);
+  
+  const printRef = useRef();
+  const handlePrint = useReactToPrint({
+    content: () => printRef.current,
+    documentTitle: 'FinSight-AI-Chat-Export',
+    bodyClass: 'print-body'
+  });
+  const { logout, user } = useContext(AuthContext);
 
   const [activeTab, setActiveTab] = useState('chat');
   const [analyticsData, setAnalyticsData] = useState(() => {
@@ -149,10 +227,10 @@ export default function Chat() {
 
   // Fetch chat sessions and user data on mount
   useEffect(() => {
-    if (token) {
+    if (user) {
       // Fetch Chat Sessions
       fetch(`${API_BASE_URL}/api/chat-sessions`, {
-        headers: { 'Authorization': `Bearer ${token}` }
+        credentials: 'include'
       })
       .then(res => res.ok ? res.json() : [])
       .then(data => setChatSessions(data))
@@ -160,7 +238,7 @@ export default function Chat() {
       
       // Fetch User Data for accurate summary and baseline analytics
       fetch(`${API_BASE_URL}/api/user-data`, {
-        headers: { 'Authorization': `Bearer ${token}` }
+        credentials: 'include'
       })
       .then(res => res.ok ? res.json() : null)
       .then(data => {
@@ -171,13 +249,13 @@ export default function Chat() {
       })
       .catch(console.error);
     }
-  }, [token]);
+  }, [user]);
 
   // Load a specific session's history and analytics
   useEffect(() => {
-    if (activeSessionId && token) {
+    if (activeSessionId && user) {
       fetch(`${API_BASE_URL}/api/chat-sessions/${activeSessionId}`, {
-        headers: { 'Authorization': `Bearer ${token}` }
+        credentials: 'include'
       })
       .then(res => res.json())
       .then(data => {
@@ -193,7 +271,7 @@ export default function Chat() {
       setMessages([]);
       setAnalyticsData({ sip: null, loanVsInvest: null, cashflow: null, goalGap: null, insurance: null });
     }
-  }, [activeSessionId, token]);
+  }, [activeSessionId, user]);
 
   // Fetch Summary when documents are loaded
   useEffect(() => {
@@ -204,9 +282,9 @@ export default function Chat() {
           const res = await fetch(`${API_BASE_URL}/api/extract-summary`, {
             method: 'POST',
             headers: { 
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${token}`
+              'Content-Type': 'application/json'
             },
+            credentials: 'include',
             body: JSON.stringify({ documentContext })
           });
           if (res.ok) {
@@ -228,7 +306,7 @@ export default function Chat() {
         try { setSummaryData(JSON.parse(storedSummary)); } catch (e) {}
       }
     }
-  }, [documents, documentContext, token, summaryData, isExtractingSummary]);
+  }, [documents, documentContext, user, summaryData, isExtractingSummary]);
 
   const handleDeleteSession = async (e, sessionId) => {
     e.stopPropagation(); // prevent setting it as active
@@ -237,7 +315,7 @@ export default function Chat() {
     try {
       const res = await fetch(`${API_BASE_URL}/api/chat-sessions/${sessionId}`, {
         method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` }
+        credentials: 'include'
       });
       if (res.ok) {
         setChatSessions(prev => prev.filter(s => s.id !== sessionId));
@@ -261,7 +339,6 @@ export default function Chat() {
     const q = question.trim();
     if (!q || isLoading) return;
 
-    setError(null);
     setInputValue('');
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
@@ -279,9 +356,9 @@ export default function Chat() {
       const res = await fetch(API_URL, {
         method: 'POST',
         headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
+          'Content-Type': 'application/json'
         },
+        credentials: 'include',
         body: JSON.stringify({
           userQuestion: q,
           documentContext: documentContext || 'No documents uploaded.',
@@ -333,7 +410,7 @@ export default function Chat() {
               } else if (data.type === 'done') {
                 finalToolsUsed = data.toolsUsed || [];
               } else if (data.type === 'error') {
-                setError(data.error);
+                toast.error(data.error);
               }
             } catch(e) {
               // Ignore incomplete JSON chunks in SSE stream parsing
@@ -361,7 +438,8 @@ export default function Chat() {
           if (currentSessionId) {
             fetch(`${API_BASE_URL}/api/chat-sessions/${currentSessionId}/analytics`, {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+              headers: { 'Content-Type': 'application/json' },
+              credentials: 'include',
               body: JSON.stringify({ analytics: newState })
             }).catch(err => console.error(err));
           }
@@ -371,11 +449,11 @@ export default function Chat() {
       }
       
     } catch (err) {
-      setError(err.message || 'Something went wrong. Is the backend running?');
+      toast.error(err.message || 'Something went wrong. Is the backend running?');
     } finally {
       setIsLoading(false);
     }
-  }, [isLoading, messages, documentContext, token]);
+  }, [isLoading, messages, documentContext, user]);
 
   const handleKeyDown = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -463,15 +541,20 @@ export default function Chat() {
 
         {/* ── Message Canvas ── */}
         <div ref={chatContainerRef} className={`flex-1 overflow-y-auto scroll-smooth flex-col items-center py-10 px-gutter bg-background scrollbar-hide ${activeTab === 'chat' ? 'flex' : 'hidden'}`}>
-          <div className="w-full max-w-content-narrow space-y-8">
+          <div className="w-full max-w-content-narrow space-y-8" ref={printRef}>
             <div className="flex justify-between items-center mb-4">
-              <button onClick={() => setIsHistorySidebarOpen(!isHistorySidebarOpen)} className="text-text-secondary hover:text-primary transition-colors flex items-center gap-1 font-label-caps text-xs">
+              <button onClick={() => setIsHistorySidebarOpen(!isHistorySidebarOpen)} className="text-text-secondary hover:text-primary transition-colors flex items-center gap-1 font-label-caps text-xs print:hidden">
                 <span className="material-symbols-outlined text-[18px]">{isHistorySidebarOpen ? 'keyboard_double_arrow_left' : 'keyboard_double_arrow_right'}</span>
                 {isHistorySidebarOpen ? 'Hide History' : 'Show History'}
               </button>
-              <button onClick={() => setIsSidebarOpen(true)} className="text-text-secondary hover:text-primary transition-colors flex items-center gap-1 font-label-caps text-xs">
-                View Data <span className="material-symbols-outlined text-[18px]">data_usage</span>
-              </button>
+              <div className="flex gap-4 print:hidden">
+                <button onClick={handlePrint} className="text-text-secondary hover:text-primary transition-colors flex items-center gap-1 font-label-caps text-xs">
+                  Export PDF <span className="material-symbols-outlined text-[18px]">picture_as_pdf</span>
+                </button>
+                <button onClick={() => setIsSidebarOpen(true)} className="text-text-secondary hover:text-primary transition-colors flex items-center gap-1 font-label-caps text-xs">
+                  View Data <span className="material-symbols-outlined text-[18px]">data_usage</span>
+                </button>
+              </div>
             </div>
 
             {/* Financial Summary Card */}
@@ -522,17 +605,6 @@ export default function Chat() {
 
             {/* Typing indicator */}
             {isLoading && <TypingIndicator />}
-
-            {/* Error banner */}
-            {error && (
-              <div className="flex gap-3 items-start bg-error-container border border-error/20 rounded-xl p-4">
-                <span className="material-symbols-outlined text-error text-[20px]">error</span>
-                <div>
-                  <p className="font-label-caps text-label-caps text-error mb-1">REQUEST FAILED</p>
-                  <p className="text-sm text-on-error-container">{error}</p>
-                </div>
-              </div>
-            )}
 
             <div className="h-32" />
           </div>

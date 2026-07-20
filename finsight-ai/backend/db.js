@@ -43,6 +43,12 @@ async function getDb() {
           FOREIGN KEY(user_id) REFERENCES users(id),
           FOREIGN KEY(session_id) REFERENCES chat_sessions(id)
         );
+        CREATE TABLE IF NOT EXISTS refresh_tokens (
+          token TEXT PRIMARY KEY,
+          user_id TEXT,
+          expires_at TIMESTAMP,
+          FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+        );
       `);
 
       isInitialized = true;
@@ -159,6 +165,30 @@ async function deleteChatSession(userId, sessionId) {
   await db.query('DELETE FROM chat_sessions WHERE id = $1 AND user_id = $2', [sessionId, userId]);
 }
 
+async function saveRefreshToken(token, userId, expiresAt) {
+  const db = await getDb();
+  await db.query(
+    'INSERT INTO refresh_tokens (token, user_id, expires_at) VALUES ($1, $2, $3)',
+    [token, userId, expiresAt]
+  );
+}
+
+async function getRefreshToken(token) {
+  const db = await getDb();
+  const res = await db.query('SELECT * FROM refresh_tokens WHERE token = $1', [token]);
+  return res.rows[0];
+}
+
+async function deleteRefreshToken(token) {
+  const db = await getDb();
+  await db.query('DELETE FROM refresh_tokens WHERE token = $1', [token]);
+}
+
+async function deleteRefreshTokensForUser(userId) {
+  const db = await getDb();
+  await db.query('DELETE FROM refresh_tokens WHERE user_id = $1', [userId]);
+}
+
 module.exports = {
   getUserByEmail,
   createUser,
@@ -171,5 +201,9 @@ module.exports = {
   updateChatSessionAnalytics,
   addChatMessage,
   getChatHistory,
-  deleteChatSession
+  deleteChatSession,
+  saveRefreshToken,
+  getRefreshToken,
+  deleteRefreshToken,
+  deleteRefreshTokensForUser
 };

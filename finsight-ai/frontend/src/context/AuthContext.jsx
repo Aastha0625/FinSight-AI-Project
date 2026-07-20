@@ -1,30 +1,40 @@
 import React, { createContext, useState, useEffect } from 'react';
+import { API_BASE_URL } from '../config';
 
 export const AuthContext = createContext();
 
 export const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(() => {
-    const storedUser = localStorage.getItem('user');
-    return storedUser ? JSON.parse(storedUser) : null;
-  });
-  const [token, setToken] = useState(() => localStorage.getItem('token') || null);
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
 
-  const login = (userData, jwtToken) => {
+  useEffect(() => {
+    // Verify session on startup
+    fetch(`${API_BASE_URL}/api/auth/me`, { credentials: 'include' })
+      .then(res => res.ok ? res.json() : null)
+      .then(data => {
+        if (data && data.user) setUser(data.user);
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+  }, []);
+
+  const login = (userData) => {
     setUser(userData);
-    setToken(jwtToken);
-    localStorage.setItem('user', JSON.stringify(userData));
-    localStorage.setItem('token', jwtToken);
   };
 
-  const logout = () => {
+  const logout = async () => {
+    try {
+      await fetch(`${API_BASE_URL}/api/auth/logout`, { method: 'POST', credentials: 'include' });
+    } catch (err) {
+      console.error('Logout error', err);
+    }
     setUser(null);
-    setToken(null);
-    localStorage.removeItem('user');
-    localStorage.removeItem('token');
   };
+
+  if (loading) return <div className="min-h-screen bg-background flex items-center justify-center text-on-surface">Loading...</div>;
 
   return (
-    <AuthContext.Provider value={{ user, token, login, logout }}>
+    <AuthContext.Provider value={{ user, login, logout }}>
       {children}
     </AuthContext.Provider>
   );

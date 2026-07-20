@@ -5,7 +5,7 @@ import { getDocuments, deleteDocument } from '../utils/localDb';
 import { API_BASE_URL } from '../config';
 
 export default function Dashboard() {
-  const { user, token } = useContext(AuthContext);
+  const { user } = useContext(AuthContext);
   const navigate = useNavigate();
 
   const [hasDocs, setHasDocs] = useState(false);
@@ -17,9 +17,9 @@ export default function Dashboard() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        if (token) {
+        if (user) {
           const res = await fetch(`${API_BASE_URL}/api/user-data`, {
-            headers: { 'Authorization': `Bearer ${token}` }
+            credentials: 'include'
           });
           
           if (res.ok) {
@@ -39,7 +39,7 @@ export default function Dashboard() {
           
           // Fetch chat sessions for Recent Insights
           const sessionRes = await fetch(`${API_BASE_URL}/api/chat-sessions`, {
-            headers: { 'Authorization': `Bearer ${token}` }
+            credentials: 'include'
           });
           if (sessionRes.ok) {
             const sessions = await sessionRes.json();
@@ -163,9 +163,16 @@ function OnboardingState({ firstName, greeting, navigate }) {
         />
       </div>
 
-      <div className="text-center mb-10">
-        <p className="text-sm text-text-secondary mb-2">You can also upload all at once on the upload page</p>
-        <button onClick={handleUploadClick} className="text-primary font-semibold hover:underline">Upload all documents →</button>
+      <div className="text-center mb-10 flex flex-col sm:flex-row justify-center items-center gap-6">
+        <button onClick={handleUploadClick} className="bg-primary hover:bg-primary/90 text-white font-semibold py-3 px-6 rounded-xl transition-all shadow-md">
+          Upload all documents →
+        </button>
+        <div className="flex flex-col items-center sm:items-start">
+          <p className="text-sm text-text-secondary">Just have a quick question?</p>
+          <button onClick={() => navigate('/chat')} className="text-primary font-semibold hover:underline flex items-center gap-1">
+            <span className="material-symbols-outlined text-[18px]">forum</span> Start a chat without documents
+          </button>
+        </div>
       </div>
 
       <div className="opacity-70">

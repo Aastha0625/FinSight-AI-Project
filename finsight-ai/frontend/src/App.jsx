@@ -9,11 +9,13 @@ import Dashboard from './pages/Dashboard';
 import { AuthProvider } from './context/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import Layout from './components/Layout';
+import { Toaster } from 'react-hot-toast';
 import './index.css';
 
 function App() {
   return (
     <AuthProvider>
+      <Toaster position="top-center" toastOptions={{ className: 'font-body-md text-sm' }} />
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<Landing />} />
