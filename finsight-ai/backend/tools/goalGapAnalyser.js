@@ -1,13 +1,18 @@
 const { calculateSIPMaturity } = require('./sipCalculator');
 
-function analyseGoalGap({ goalName = "My Goal", targetAmount = 5000000, targetYear = new Date().getFullYear() + 10, currentSIPAmount = 5000, expectedReturn = 12 }) {
+function analyseGoalGap({ goalName = "My Goal", targetAmount = 5000000, targetYear = new Date().getFullYear() + 10, currentSIPAmount = 0, currentPortfolioValue = 0, expectedReturn = 12 }) {
   const currentYear = new Date().getFullYear();
-  const years = targetYear - currentYear;
+  
+  // Handle if AI passes targetYear as an absolute year (2036) or an offset (10)
+  let years = targetYear;
+  if (targetYear > 2000) {
+    years = targetYear - currentYear;
+  }
   
   if (years <= 0) {
     return {
       projectedValue: 0, gap: targetAmount, additionalSIPNeeded: 0, onTrack: false,
-      summary: `The target year ${targetYear} must be in the future.`
+      summary: `The target timeframe (${years} years) must be in the future.`
     };
   }
   
@@ -17,7 +22,10 @@ function analyseGoalGap({ goalName = "My Goal", targetAmount = 5000000, targetYe
     years
   });
   
-  const projectedValue = sipResult.futureValue;
+  const r = expectedReturn / 100;
+  const corpusFutureValue = currentPortfolioValue * Math.pow(1 + r, years);
+  
+  const projectedValue = sipResult.futureValue + corpusFutureValue;
   const gap = Math.max(0, targetAmount - projectedValue);
   const onTrack = gap <= 0;
   

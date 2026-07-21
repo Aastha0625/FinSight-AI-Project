@@ -17,7 +17,7 @@ const tools = [
           annualReturnPercent: { type: "number", description: "Expected annual return percentage" },
           years: { type: "number", description: "Number of years for investment" }
         },
-        required: ["monthlyAmount", "annualReturnPercent", "years"]
+        required: []
       }
     }
   },
@@ -34,7 +34,7 @@ const tools = [
           yearsToRetirement: { type: "number", description: "Years left until retirement" },
           dependents: { type: "number", description: "Number of dependents" }
         },
-        required: ["annualIncome", "currentCover", "yearsToRetirement", "dependents"]
+        required: []
       }
     }
   },
@@ -52,7 +52,7 @@ const tools = [
           expectedReturnRate: { type: "number" },
           years: { type: "number" }
         },
-        required: ["loanOutstanding", "loanInterestRate", "investmentAmount", "expectedReturnRate", "years"]
+        required: []
       }
     }
   },
@@ -69,7 +69,7 @@ const tools = [
           sipAmounts: { type: "array", items: { type: "number" } },
           insurancePremiums: { type: "array", items: { type: "number" } }
         },
-        required: ["monthlyIncome", "emis", "sipAmounts", "insurancePremiums"]
+        required: []
       }
     }
   },
@@ -85,9 +85,10 @@ const tools = [
           targetAmount: { type: "number" },
           targetYear: { type: "number" },
           currentSIPAmount: { type: "number" },
+          currentPortfolioValue: { type: "number" },
           expectedReturn: { type: "number" }
         },
-        required: ["goalName", "targetAmount", "targetYear", "currentSIPAmount", "expectedReturn"]
+        required: []
       }
     }
   }

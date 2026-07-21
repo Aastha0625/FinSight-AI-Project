@@ -8,9 +8,15 @@ export default function Dashboard() {
   const { user } = useContext(AuthContext);
   const navigate = useNavigate();
 
-  const [hasDocs, setHasDocs] = useState(false);
-  const [summary, setSummary] = useState(null);
-  const [analytics, setAnalytics] = useState(null);
+  const [hasDocs, setHasDocs] = useState(() => localStorage.getItem('finsight_docs_uploaded') === 'true');
+  const [summary, setSummary] = useState(() => {
+    const s = localStorage.getItem('finsight_summary');
+    return s ? JSON.parse(s) : null;
+  });
+  const [analytics, setAnalytics] = useState(() => {
+    const s = localStorage.getItem('finsight_analytics');
+    return s ? JSON.parse(s) : null;
+  });
   const [chatHistory, setChatHistory] = useState([]);
   const [localDocs, setLocalDocs] = useState([]);
 
@@ -55,6 +61,16 @@ export default function Dashboard() {
       const uploaded = localStorage.getItem('finsight_docs_uploaded') === 'true';
       if (uploaded) {
         setHasDocs(true);
+        
+        const storedSummary = localStorage.getItem('finsight_summary');
+        if (storedSummary) {
+          try { setSummary(JSON.parse(storedSummary)); } catch (e) {}
+        }
+        
+        const storedAnalytics = localStorage.getItem('finsight_analytics');
+        if (storedAnalytics) {
+          try { setAnalytics(JSON.parse(storedAnalytics)); } catch (e) {}
+        }
       }
       
       try {
@@ -66,7 +82,7 @@ export default function Dashboard() {
     };
 
     fetchData();
-  }, [token]);
+  }, [user]);
 
   const getGreeting = () => {
     const hour = new Date().getHours();

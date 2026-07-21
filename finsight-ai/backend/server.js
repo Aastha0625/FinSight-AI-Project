@@ -215,6 +215,53 @@ app.get('/api/auth/me', verifyToken, async (req, res) => {
   }
 });
 
+// ── PUT /api/user/profile ──────────────────────────────────────────────────
+app.put('/api/user/profile', verifyToken, async (req, res) => {
+  try {
+    const { firstName, lastName, email, password } = req.body;
+    const updates = {};
+    
+    if (firstName) updates.firstName = firstName;
+    if (lastName !== undefined) updates.lastName = lastName;
+    
+    if (email) {
+      const existing = await db.getUserByEmail(email);
+      if (existing && existing.id !== req.user.id) {
+        return res.status(400).json({ error: 'Email already in use.' });
+      }
+      updates.email = email;
+    }
+    
+    if (password) {
+      if (password.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters' });
+      const salt = await bcrypt.genSalt(10);
+      updates.password = await bcrypt.hash(password, salt);
+    }
+    
+    await db.updateUser(req.user.id, updates);
+    
+    // Return updated user
+    const dbUser = await db.getUserByEmail(email || req.user.email);
+    res.json({ user: { id: dbUser.id, firstName: dbUser.firstName, email: dbUser.email } });
+  } catch (err) {
+    logger.error(`Profile update error: ${err.message}`);
+    res.status(500).json({ error: 'Failed to update profile' });
+  }
+});
+
+// ── DELETE /api/user ───────────────────────────────────────────────────────
+app.delete('/api/user', verifyToken, async (req, res) => {
+  try {
+    await db.deleteUser(req.user.id);
+    res.clearCookie('accessToken');
+    res.clearCookie('refreshToken');
+    res.json({ success: true });
+  } catch (err) {
+    logger.error(`User deletion error: ${err.message}`);
+    res.status(500).json({ error: 'Failed to delete user' });
+  }
+});
+
 // ── GET /api/user-data ─────────────────────────────────────────────────────
 app.get('/api/user-data', verifyToken, async (req, res) => {
   try {

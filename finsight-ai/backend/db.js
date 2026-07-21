@@ -2,6 +2,9 @@ const { Pool } = require('pg');
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
+  ssl: {
+    rejectUnauthorized: false
+  }
 });
 
 let isInitialized = false;
@@ -78,6 +81,43 @@ async function createUser(user) {
     [id, user.firstName, user.lastName, user.email, user.password, created_at]
   );
   return { id, ...user, created_at };
+}
+
+async function updateUser(userId, data) {
+  const db = await getDb();
+  const updates = [];
+  const values = [userId];
+  let paramIdx = 2;
+  
+  if (data.firstName !== undefined) {
+    updates.push(`"firstName" = $${paramIdx++}`);
+    values.push(data.firstName);
+  }
+  if (data.lastName !== undefined) {
+    updates.push(`"lastName" = $${paramIdx++}`);
+    values.push(data.lastName);
+  }
+  if (data.email !== undefined) {
+    updates.push(`email = $${paramIdx++}`);
+    values.push(data.email);
+  }
+  if (data.password !== undefined) {
+    updates.push(`password = $${paramIdx++}`);
+    values.push(data.password);
+  }
+
+  if (updates.length > 0) {
+    await db.query(`UPDATE users SET ${updates.join(', ')} WHERE id = $1`, values);
+  }
+}
+
+async function deleteUser(userId) {
+  const db = await getDb();
+  await db.query('DELETE FROM chat_history WHERE user_id = $1', [userId]);
+  await db.query('DELETE FROM chat_sessions WHERE user_id = $1', [userId]);
+  await db.query('DELETE FROM portfolios WHERE user_id = $1', [userId]);
+  await db.query('DELETE FROM refresh_tokens WHERE user_id = $1', [userId]);
+  await db.query('DELETE FROM users WHERE id = $1', [userId]);
 }
 
 async function updatePortfolioSummary(userId, summaryJson) {
@@ -205,5 +245,7 @@ module.exports = {
   saveRefreshToken,
   getRefreshToken,
   deleteRefreshToken,
-  deleteRefreshTokensForUser
+  deleteRefreshTokensForUser,
+  updateUser,
+  deleteUser
 };

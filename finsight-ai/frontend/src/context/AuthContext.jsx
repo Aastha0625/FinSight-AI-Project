@@ -34,7 +34,7 @@ export const AuthProvider = ({ children }) => {
   if (loading) return <div className="min-h-screen bg-background flex items-center justify-center text-on-surface">Loading...</div>;
 
   return (
-    <AuthContext.Provider value={{ user, login, logout }}>
+    <AuthContext.Provider value={{ user, login, logout, setUser }}>
       {children}
     </AuthContext.Provider>
   );

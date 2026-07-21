@@ -28,16 +28,19 @@ export default function Layout({ children }) {
   return (
     <div className="bg-background text-on-surface h-screen flex flex-col md:flex-row overflow-hidden">
       {/* Desktop Sidebar */}
-      <aside className={`hidden md:flex flex-col h-screen fixed left-0 top-0 overflow-y-auto ${isSidebarCollapsed ? 'w-[80px]' : 'w-[220px]'} bg-surface-container-lowest border-r border-border z-50 transition-all duration-300`}>
+      <aside className={`hidden md:flex flex-col h-screen fixed left-0 top-0 overflow-y-auto ${isSidebarCollapsed ? 'w-[88px]' : 'w-[220px]'} bg-surface-container-lowest border-r border-border z-50 transition-all duration-300`}>
         <div 
-          className="p-6 flex items-center justify-center md:justify-start cursor-pointer hover:bg-surface-container-high transition-colors"
+          className={`flex items-center cursor-pointer hover:bg-surface-container-high transition-colors ${isSidebarCollapsed ? 'p-4 flex-col gap-2 justify-center' : 'p-6 justify-between'}`}
           onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
           title={isSidebarCollapsed ? "Expand Menu" : "Collapse Menu"}
         >
           <div className="flex items-center gap-3">
-            <img src="/logo.png" alt="FinSight AI Logo" className="w-10 h-10 object-contain shrink-0 rounded" />
+            <img src="/logo.png" alt="FinSight AI Logo" className={`w-10 h-10 object-contain shrink-0 rounded ${isSidebarCollapsed ? 'mb-1' : ''}`} />
             {!isSidebarCollapsed && <span className="font-headline-sm text-lg font-bold text-primary whitespace-nowrap overflow-hidden">FinSight AI</span>}
           </div>
+          <span className="material-symbols-outlined text-text-secondary hidden md:block">
+            {isSidebarCollapsed ? 'keyboard_double_arrow_right' : 'keyboard_double_arrow_left'}
+          </span>
         </div>
         
         <nav className="flex-1 px-2 mt-4 space-y-2">
@@ -58,10 +61,10 @@ export default function Layout({ children }) {
         </nav>
         
         <div className="p-2 space-y-1 mt-auto border-t border-border pt-4">
-          <button className={`w-full text-text-secondary p-4 flex items-center gap-3 hover:bg-surface-container-high transition-colors rounded-lg ${isSidebarCollapsed ? 'justify-center p-3' : ''}`} title="Settings">
+          <Link to="/settings" className={`w-full text-text-secondary p-4 flex items-center gap-3 hover:bg-surface-container-high transition-colors rounded-lg ${isSidebarCollapsed ? 'justify-center p-3' : ''}`} title="Settings">
             <span className="material-symbols-outlined shrink-0">settings</span>
             {!isSidebarCollapsed && <span className="font-label-caps text-label-caps truncate">Settings</span>}
-          </button>
+          </Link>
           <button onClick={handleLogout} className={`w-full text-text-secondary p-4 flex items-center gap-3 hover:bg-surface-container-high transition-colors rounded-lg ${isSidebarCollapsed ? 'justify-center p-3' : ''}`} title="Sign Out">
             <span className="material-symbols-outlined shrink-0">logout</span>
             {!isSidebarCollapsed && <span className="font-label-caps text-label-caps truncate">Sign Out</span>}
@@ -70,7 +73,7 @@ export default function Layout({ children }) {
       </aside>
 
       {/* Top Navbar */}
-      <header className={`fixed top-0 right-0 left-0 ${isSidebarCollapsed ? 'md:left-[80px]' : 'md:left-[220px]'} h-16 bg-surface-container-lowest border-b border-border z-40 flex items-center justify-between px-gutter transition-all duration-300`}>
+      <header className={`fixed top-0 right-0 left-0 ${isSidebarCollapsed ? 'md:left-[88px]' : 'md:left-[220px]'} h-16 bg-surface-container-lowest border-b border-border z-40 flex items-center justify-between px-gutter transition-all duration-300`}>
         <div className="flex items-center gap-2 md:hidden">
           <span className="font-headline-sm text-lg font-bold text-primary">FinSight</span>
         </div>
@@ -99,7 +102,7 @@ export default function Layout({ children }) {
             <>
               <div className="fixed inset-0 z-40" onClick={() => setDropdownOpen(false)}></div>
               <div className="absolute top-10 right-0 mt-2 w-48 bg-white border border-border rounded-lg shadow-lg py-1 z-50">
-                <button className="block w-full text-left px-4 py-2 text-sm text-on-surface hover:bg-surface transition-colors">Account Settings</button>
+                <Link to="/settings" onClick={() => setDropdownOpen(false)} className="block w-full text-left px-4 py-2 text-sm text-on-surface hover:bg-surface transition-colors">Account Settings</Link>
                 <button onClick={() => { setDropdownOpen(false); handleLogout(); }} className="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors">Sign Out</button>
               </div>
             </>
@@ -108,7 +111,7 @@ export default function Layout({ children }) {
       </header>
 
       {/* Main Content Area */}
-      <main className={`flex-1 w-full ${isSidebarCollapsed ? 'md:ml-[80px]' : 'md:ml-[220px]'} pt-[64px] pb-[60px] md:pb-0 flex flex-col h-screen overflow-hidden transition-all duration-300`}>
+      <main className={`flex-1 w-full ${isSidebarCollapsed ? 'md:ml-[88px]' : 'md:ml-[220px]'} pt-[64px] pb-[60px] md:pb-0 flex flex-col h-screen overflow-hidden transition-all duration-300`}>
         {children}
       </main>
 

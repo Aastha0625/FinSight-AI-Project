@@ -6,6 +6,7 @@ import Chat from './pages/Chat';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
+import Settings from './pages/Settings';
 import { AuthProvider } from './context/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import Layout from './components/Layout';
@@ -39,6 +40,13 @@ function App() {
             <ProtectedRoute>
               <Layout>
                 <Chat />
+              </Layout>
+            </ProtectedRoute>
+          } />
+          <Route path="/settings" element={
+            <ProtectedRoute>
+              <Layout>
+                <Settings />
               </Layout>
             </ProtectedRoute>
           } />

@@ -1,4 +1,4 @@
-function planMonthlyCashflow({ monthlyIncome = 100000, emis = [25000], sipAmounts = [15000], insurancePremiums = [2000] }) {
+function planMonthlyCashflow({ monthlyIncome = 0, emis = [], sipAmounts = [], insurancePremiums = [] }) {
   const sumArray = (arr) => arr.reduce((acc, curr) => acc + curr, 0);
   
   const totalEMI = sumArray(emis || []);
@@ -8,7 +8,7 @@ function planMonthlyCashflow({ monthlyIncome = 100000, emis = [25000], sipAmount
   const totalCommitments = totalEMI + totalSIP + totalPremium;
   const surplus = monthlyIncome - totalCommitments;
   
-  const commitmentRatio = (totalCommitments / monthlyIncome) * 100;
+  const commitmentRatio = monthlyIncome > 0 ? (totalCommitments / monthlyIncome) * 100 : 0;
   
   let status = "Healthy";
   let statusColor = "#16A34A";
