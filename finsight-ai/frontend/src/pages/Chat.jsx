@@ -135,7 +135,7 @@ export default function Chat() {
     .join('\n\n---\n\n');
 
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [isHistorySidebarOpen, setIsHistorySidebarOpen] = useState(true); // Left sidebar
+  const [isHistorySidebarOpen, setIsHistorySidebarOpen] = useState(false); // Left sidebar
   const [inputValue, setInputValue] = useState('');
   const [messages, setMessages] = useState([]); // rely on backend
   const [analyticsFeedback, setAnalyticsFeedback] = useState(null);
@@ -538,8 +538,16 @@ export default function Chat() {
     <div className="bg-background text-on-surface font-body-md w-full h-full flex flex-col relative overflow-hidden">
 
       {/* ── Tab Switcher ── */}
-      <div className="bg-surface-container-lowest border-b border-border">
-        <div className="max-w-content-narrow mx-auto px-gutter flex items-center gap-6 pt-2">
+      <div className="bg-surface-container-lowest border-b border-border relative z-30">
+        <div className="max-w-content-narrow mx-auto px-gutter flex items-center justify-center gap-6 pt-2 relative">
+          <button 
+            onClick={() => setIsHistorySidebarOpen(true)}
+            className="absolute left-4 top-1 text-text-secondary hover:text-primary transition-colors flex items-center justify-center p-2 rounded-lg hover:bg-surface-container-high"
+            title="Chat History"
+          >
+            <span className="material-symbols-outlined">menu</span>
+          </button>
+          
           <button 
             onClick={() => setActiveTab('chat')}
             className={`pb-3 px-1 font-label-caps text-sm border-b-2 transition-colors ${activeTab === 'chat' ? 'border-primary text-primary font-bold' : 'border-transparent text-text-secondary hover:text-on-surface'}`}
@@ -558,8 +566,15 @@ export default function Chat() {
 
       <main className="flex-1 overflow-hidden relative flex flex-row">
 
-        {/* ── Left Sidebar: Chat History ── */}
-        <aside className={`bg-surface-container-lowest border-r border-border flex flex-col transition-all duration-300 overflow-hidden ${isHistorySidebarOpen && activeTab === 'chat' ? 'w-64 opacity-100' : 'w-0 opacity-0 border-none'}`}>
+        {/* ── Left Sidebar: Chat History (Slide-over Drawer) ── */}
+        <div 
+          className={`fixed inset-0 bg-black/20 z-40 transition-opacity duration-300 ${isHistorySidebarOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
+          onClick={() => setIsHistorySidebarOpen(false)}
+        >
+          <aside 
+            onClick={(e) => e.stopPropagation()}
+            className={`absolute top-0 left-0 h-full bg-surface-container-lowest border-r border-border flex flex-col overflow-hidden w-72 shadow-2xl transition-transform duration-300 ${isHistorySidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}
+          >
           <div className="w-64 h-full flex flex-col">
             <div className="p-4 border-b border-border">
               <div className="flex justify-between items-center mb-4">
@@ -603,20 +618,11 @@ export default function Chat() {
                 ))
               )}
             </div>
-          </div>
-        </aside>
+          </aside>
+        </div>
 
         {/* ── Message Canvas ── */}
         <div ref={chatContainerRef} className={`flex-1 overflow-y-auto scroll-smooth flex-col items-center py-10 px-gutter bg-background scrollbar-hide relative ${activeTab === 'chat' ? 'flex' : 'hidden'}`}>
-          {!isHistorySidebarOpen && activeTab === 'chat' && (
-            <button 
-              onClick={() => setIsHistorySidebarOpen(true)}
-              className="absolute left-0 top-[140px] z-30 bg-surface-container-lowest border border-l-0 border-border rounded-r-lg w-8 h-12 flex items-center justify-center text-text-secondary hover:text-primary transition-all shadow-sm group print:hidden"
-              title="Show History"
-            >
-              <span className="material-symbols-outlined group-hover:translate-x-1 transition-transform">keyboard_double_arrow_right</span>
-            </button>
-          )}
           <div className="w-full max-w-content-narrow space-y-8" ref={printRef}>
             <div className="flex justify-between items-center mb-4">
               <div></div>
