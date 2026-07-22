@@ -22,7 +22,7 @@ function AIMessage({ content, isTyping }) {
           <span className="text-white font-bold text-sm">₹</span>
         </div>
         <div className="flex-1 bg-surface-container-lowest border border-border rounded-xl p-5 shadow-sm text-text-muted italic text-sm">
-          Processed via financial calculators. Please check the Analytics tab or review for errors.
+          I couldn't process that properly. Please try asking again with specific numbers, or check the Analytics tab to see if a chart was generated!
         </div>
       </div>
     );
@@ -138,6 +138,7 @@ export default function Chat() {
   const [isHistorySidebarOpen, setIsHistorySidebarOpen] = useState(true); // Left sidebar
   const [inputValue, setInputValue] = useState('');
   const [messages, setMessages] = useState([]); // rely on backend
+  const [analyticsFeedback, setAnalyticsFeedback] = useState(null);
   const [chatSessions, setChatSessions] = useState([]);
   const [activeSessionId, setActiveSessionId] = useState(() => {
     return location.state?.sessionId || null;
@@ -284,6 +285,7 @@ export default function Chat() {
     if (!q || isLoading) return;
 
     setInputValue('');
+    setAnalyticsFeedback(null);
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
     }
@@ -322,6 +324,7 @@ export default function Chat() {
       let finalToolsUsed = [];
       let currentSessionId = activeSessionId;
       let buffer = '';
+      let fullResponse = '';
 
       while (true) {
         const { value, done } = await reader.read();
@@ -347,6 +350,7 @@ export default function Chat() {
                   setChatSessions(prev => [{ id: data.sessionId, title: newTitle, updated_at: new Date().toISOString() }, ...prev]);
                 }
               } else if (data.type === 'content') {
+                fullResponse += data.content;
                 setMessages(prev => {
                   const newMsgs = [...prev];
                   if (newMsgs.length === 0) return newMsgs;
@@ -394,6 +398,9 @@ export default function Chat() {
           return newState;
         });
         setHasNewAnalytics(true);
+        setAnalyticsFeedback(null);
+      } else if (activeTab === 'analytics') {
+        setAnalyticsFeedback(fullResponse || "I couldn't process that. Please try again or check your documents.");
       }
       
     } catch (err) {
@@ -579,9 +586,9 @@ export default function Chat() {
             <AnalyticsTab 
               financialSummary={summaryData} 
               analyticsData={analyticsData} 
-              suggestions={SUGGESTIONS}
               isLoading={isLoading}
-              onSuggestionClick={(s) => { sendMessage(s); }}
+              analyticsFeedback={analyticsFeedback}
+              onGenerateClick={(prompt) => { sendMessage(prompt); }}
             />
             <div className="h-32" />
           </div>
@@ -644,7 +651,7 @@ export default function Chat() {
       </main>
 
       {/* ── Bottom Input Area ── */}
-      <div className="bg-surface-container-lowest border-t border-border px-gutter py-4 z-30">
+      <div className={`bg-surface-container-lowest border-t border-border px-gutter py-4 z-30 ${activeTab === 'chat' ? 'block' : 'hidden'}`}>
         <div className="max-w-content-narrow mx-auto flex flex-col gap-2">
           <div className={`relative flex items-end gap-2 bg-surface border rounded-2xl p-2 transition-all ${isLoading ? 'border-primary/50 opacity-80' : 'border-border focus-within:border-primary focus-within:ring-1 focus-within:ring-primary'}`}>
             <button 

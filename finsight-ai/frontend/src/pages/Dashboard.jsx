@@ -8,6 +8,7 @@ export default function Dashboard() {
   const { user } = useContext(AuthContext);
   const navigate = useNavigate();
 
+  const [isLoading, setIsLoading] = useState(true);
   const [hasDocs, setHasDocs] = useState(() => localStorage.getItem('finsight_docs_uploaded') === 'true');
   const [summary, setSummary] = useState(() => {
     const s = localStorage.getItem('finsight_summary');
@@ -53,9 +54,11 @@ export default function Dashboard() {
           }
         }
       }
-    } catch (e) {
-      console.error('Error fetching user data from backend', e);
-    }
+      } catch (e) {
+        console.error('Error fetching user data from backend', e);
+      } finally {
+        setIsLoading(false);
+      }
 
       // Fallback to local storage if needed
       const uploaded = localStorage.getItem('finsight_docs_uploaded') === 'true';
@@ -93,6 +96,17 @@ export default function Dashboard() {
 
   const greetingStr = getGreeting();
   const firstName = user?.firstName || 'User';
+
+  if (isLoading && !hasDocs) {
+    return (
+      <div className="w-full h-full flex items-center justify-center bg-background">
+        <div className="flex flex-col items-center justify-center">
+          <span className="material-symbols-outlined animate-spin text-primary text-4xl mb-4">autorenew</span>
+          <p className="text-text-secondary font-body-md animate-pulse">Loading your dashboard...</p>
+        </div>
+      </div>
+    );
+  }
 
   if (!hasDocs) {
     return <OnboardingState firstName={firstName} greeting={greetingStr} navigate={navigate} />;
