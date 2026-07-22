@@ -539,14 +539,15 @@ export default function Chat() {
 
       {/* ── Tab Switcher ── */}
       <div className="bg-surface-container-lowest border-b border-border relative z-30">
-        <div className="max-w-content-narrow mx-auto px-gutter flex items-center justify-center gap-6 pt-2 relative">
-          <button 
-            onClick={() => setIsHistorySidebarOpen(true)}
-            className="absolute left-4 top-1 text-text-secondary hover:text-primary transition-colors flex items-center justify-center p-2 rounded-lg hover:bg-surface-container-high"
-            title="Chat History"
-          >
-            <span className="material-symbols-outlined">menu</span>
-          </button>
+        <button 
+          onClick={() => setIsHistorySidebarOpen(true)}
+          className="absolute left-4 top-1/2 -translate-y-1/2 text-text-secondary hover:text-primary transition-colors flex items-center justify-center p-2 rounded-lg hover:bg-surface-container-high z-40"
+          title="Chat History"
+        >
+          <span className="material-symbols-outlined">menu</span>
+        </button>
+        
+        <div className="max-w-content-narrow mx-auto px-gutter flex items-center justify-center gap-6 pt-2">
           
           <button 
             onClick={() => setActiveTab('chat')}
@@ -568,14 +569,13 @@ export default function Chat() {
 
         {/* ── Left Sidebar: Chat History (Slide-over Drawer) ── */}
         <div 
-          className={`fixed inset-0 bg-black/20 z-40 transition-opacity duration-300 ${isHistorySidebarOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
+          className={`absolute inset-0 bg-black/20 z-40 transition-opacity duration-300 ${isHistorySidebarOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
           onClick={() => setIsHistorySidebarOpen(false)}
         >
           <aside 
             onClick={(e) => e.stopPropagation()}
             className={`absolute top-0 left-0 h-full bg-surface-container-lowest border-r border-border flex flex-col overflow-hidden w-72 shadow-2xl transition-transform duration-300 ${isHistorySidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}
           >
-          <div className="w-64 h-full flex flex-col">
             <div className="p-4 border-b border-border">
               <div className="flex justify-between items-center mb-4">
                 <h3 className="font-headline-sm text-headline-sm">Chat History</h3>
@@ -618,9 +618,8 @@ export default function Chat() {
                 ))
               )}
             </div>
-          </div>
-        </aside>
-      </div>
+          </aside>
+        </div>
 
         {/* ── Message Canvas ── */}
         <div ref={chatContainerRef} className={`flex-1 overflow-y-auto scroll-smooth flex-col items-center py-10 px-gutter bg-background scrollbar-hide relative ${activeTab === 'chat' ? 'flex' : 'hidden'}`}>
