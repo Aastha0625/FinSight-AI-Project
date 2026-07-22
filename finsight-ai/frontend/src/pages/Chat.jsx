@@ -618,8 +618,9 @@ export default function Chat() {
                 ))
               )}
             </div>
-          </aside>
-        </div>
+          </div>
+        </aside>
+      </div>
 
         {/* ── Message Canvas ── */}
         <div ref={chatContainerRef} className={`flex-1 overflow-y-auto scroll-smooth flex-col items-center py-10 px-gutter bg-background scrollbar-hide relative ${activeTab === 'chat' ? 'flex' : 'hidden'}`}>
