@@ -115,8 +115,21 @@ export default function Dashboard() {
   const handleDeleteDoc = async (id) => {
     if (window.confirm("Are you sure you want to delete this document?")) {
       await deleteDocument(id);
-      setLocalDocs(prev => prev.filter(d => d.id !== id));
-      if (localDocs.length === 1) { // We just deleted the last one
+      const remainingDocs = localDocs.filter(d => d.id !== id);
+      setLocalDocs(remainingDocs);
+      
+      // Clear stuck data so it regenerates or stays clear
+      localStorage.removeItem('finsight_summary');
+      try {
+        await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/user/summary`, {
+          method: 'DELETE',
+          credentials: 'include'
+        });
+      } catch (e) {
+        console.error("Failed to clear summary on backend:", e);
+      }
+
+      if (remainingDocs.length === 0) { // We just deleted the last one
         localStorage.removeItem('finsight_docs_uploaded');
         localStorage.removeItem('finsight_partial_uploads');
         setHasDocs(false);

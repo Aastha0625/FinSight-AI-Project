@@ -250,16 +250,29 @@ app.put('/api/user/profile', verifyToken, async (req, res) => {
   }
 });
 
-// ── DELETE /api/user ───────────────────────────────────────────────────────
+// ── DELETE /api/user ────────────────────────────────────────────────────────
 app.delete('/api/user', verifyToken, async (req, res) => {
   try {
-    await db.deleteUser(req.user.id);
+    const userId = req.user.id;
+    await db.deleteUser(userId);
     res.clearCookie('accessToken');
     res.clearCookie('refreshToken');
+    res.json({ success: true, message: 'User account deleted successfully' });
+  } catch (err) {
+    logger.error(`Error: ${err.message}`, { stack: err.stack });
+    res.status(500).json({ error: 'Server error deleting user.' });
+  }
+});
+
+// ── DELETE /api/user/summary ────────────────────────────────────────────────
+app.delete('/api/user/summary', verifyToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    await db.clearUserSummary(userId);
     res.json({ success: true });
   } catch (err) {
-    logger.error(`User deletion error: ${err.message}`);
-    res.status(500).json({ error: 'Failed to delete user' });
+    logger.error(`Error: ${err.message}`, { stack: err.stack });
+    res.status(500).json({ error: 'Server error clearing summary.' });
   }
 });
 

@@ -229,6 +229,11 @@ async function deleteRefreshTokensForUser(userId) {
   await db.query('DELETE FROM refresh_tokens WHERE user_id = $1', [userId]);
 }
 
+async function clearUserSummary(userId) {
+  const db = await getDb();
+  await db.query('UPDATE user_profiles SET financial_summary = NULL WHERE user_id = $1', [userId]);
+}
+
 module.exports = {
   getUserByEmail,
   createUser,
@@ -247,5 +252,6 @@ module.exports = {
   deleteRefreshToken,
   deleteRefreshTokensForUser,
   updateUser,
-  deleteUser
+  deleteUser,
+  clearUserSummary
 };
