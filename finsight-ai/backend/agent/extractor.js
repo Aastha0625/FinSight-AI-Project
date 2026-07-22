@@ -10,7 +10,7 @@ async function extractSummary(documentContext) {
 
   const prompt = `You are a financial data extraction AI. Extract the financial details from the following document into a strict JSON object. Do not wrap it in markdown block quotes (no \`\`\`json). Just return the raw JSON.
   
-Required JSON Schema:
+Required JSON Schema (fields can be null, "Unknown", or 0 if missing):
 {
   "sips": [{"fundName": "string", "monthlyAmount": "number", "startDate": "string"}],
   "policies": [{"type": "string", "sumAssured": "number", "premium": "number", "maturityDate": "string"}],
@@ -19,6 +19,11 @@ Required JSON Schema:
   "totalInsuranceCover": "number",
   "totalMonthlyEMI": "number"
 }
+
+IMPORTANT INSTRUCTIONS: 
+- Be extremely lenient. Even if a fund or policy is just mentioned by name and has an amount, ADD IT to the respective array.
+- If specific fields like 'startDate' or 'interestRate' are missing, use "Unknown" or 0. DO NOT skip an entry just because it's missing some details.
+- If it's a Holdings Statement, treat the list of Mutual Funds/investments as "sips" and try to extract their amounts.
 
 If you cannot find any information for a category, use an empty array for lists and 0 for totals.
 

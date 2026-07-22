@@ -280,6 +280,109 @@ export default function Chat() {
     }
   }, [messages, isLoading]);
 
+  const generateAnalytics = useCallback(async (question) => {
+    const q = question.trim();
+    if (!q || isLoading) return;
+
+    setAnalyticsFeedback(null);
+    setIsLoading(true);
+
+    // Build conversation history (without appending a new user message to the UI)
+    const history = messages.map(m => ({ role: m.role, content: m.content }));
+
+    try {
+      const res = await fetch(API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          userQuestion: q,
+          documentContext: documentContext || 'No documents uploaded.',
+          conversationHistory: history,
+          sessionId: activeSessionId,
+          isAnalyticsEvent: true // Tell backend NOT to save this to chat history
+        }),
+      });
+
+      if (!res.ok) throw new Error('Server error');
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder("utf-8");
+      
+      let finalToolsUsed = [];
+      let currentSessionId = activeSessionId;
+      let fullResponse = '';
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        
+        const chunkStr = decoder.decode(value, { stream: true });
+        const lines = chunkStr.split('\n\n');
+        
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const dataStr = line.replace('data: ', '').trim();
+            if (!dataStr) continue;
+            
+            try {
+              const data = JSON.parse(dataStr);
+              if (data.type === 'session') {
+                if (data.sessionId && data.sessionId !== activeSessionId) {
+                  currentSessionId = data.sessionId;
+                  setActiveSessionId(data.sessionId);
+                }
+              } else if (data.type === 'content') {
+                fullResponse += data.content;
+              } else if (data.type === 'done') {
+                finalToolsUsed = data.toolsUsed || [];
+              } else if (data.type === 'error') {
+                toast.error(data.error);
+              }
+            } catch(e) {}
+          }
+        }
+      }
+      
+      let updatedAnalytics = false;
+      const newAnalyticsData = {};
+      
+      if (finalToolsUsed && Array.isArray(finalToolsUsed)) {
+        finalToolsUsed.forEach(tool => {
+          if (tool.name === 'calculate_sip_maturity') { newAnalyticsData.sip = tool.result; updatedAnalytics = true; }
+          if (tool.name === 'compare_loan_vs_invest') { newAnalyticsData.loanVsInvest = tool.result; updatedAnalytics = true; }
+          if (tool.name === 'plan_monthly_cashflow') { newAnalyticsData.cashflow = tool.result; updatedAnalytics = true; }
+          if (tool.name === 'analyse_goal_gap') { newAnalyticsData.goalGap = tool.result; updatedAnalytics = true; }
+          if (tool.name === 'check_insurance_adequacy') { newAnalyticsData.insurance = tool.result; updatedAnalytics = true; }
+        });
+      }
+      
+      if (updatedAnalytics) {
+        setAnalyticsData(prev => {
+          const newState = { ...prev, ...newAnalyticsData };
+          if (currentSessionId) {
+            fetch(`${API_BASE_URL}/api/chat-sessions/${currentSessionId}/analytics`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              credentials: 'include',
+              body: JSON.stringify({ analytics: newState })
+            }).catch(err => console.error(err));
+          }
+          return newState;
+        });
+        setHasNewAnalytics(true);
+        setAnalyticsFeedback(null);
+      } else {
+        setAnalyticsFeedback(fullResponse || "I couldn't process that. Please try again or check your documents.");
+      }
+      
+    } catch (err) {
+      toast.error(err.message || 'Something went wrong.');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [messages, isLoading, activeSessionId, documentContext, API_URL]);
+
   const sendMessage = useCallback(async (question) => {
     const q = question.trim();
     if (!q || isLoading) return;
@@ -588,7 +691,7 @@ export default function Chat() {
               analyticsData={analyticsData} 
               isLoading={isLoading}
               analyticsFeedback={analyticsFeedback}
-              onGenerateClick={(prompt) => { sendMessage(prompt); }}
+              onGenerateClick={(prompt) => { generateAnalytics(prompt); }}
             />
             <div className="h-32" />
           </div>

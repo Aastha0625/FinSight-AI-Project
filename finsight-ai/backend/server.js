@@ -362,7 +362,7 @@ app.post('/api/chat-sessions/:id/analytics', verifyToken, async (req, res) => {
 app.post('/api/chat', verifyToken, async (req, res) => {
   try {
     const userId = req.user.id;
-    let { userQuestion, documentContext, conversationHistory = [], sessionId } = req.body;
+    let { userQuestion, documentContext, conversationHistory = [], sessionId, isAnalyticsEvent } = req.body;
 
     if (!userQuestion || typeof userQuestion !== 'string' || !userQuestion.trim()) {
       return res.status(400).json({ error: 'userQuestion is required and must be a non-empty string.' });
@@ -378,8 +378,10 @@ app.post('/api/chat', verifyToken, async (req, res) => {
       sessionId = session.id;
     }
 
-    // Save user message to DB
-    await db.addChatMessage(userId, sessionId, 'user', userQuestion);
+    // Save user message to DB only if not an analytics event
+    if (!isAnalyticsEvent) {
+      await db.addChatMessage(userId, sessionId, 'user', userQuestion);
+    }
 
     // Setup SSE headers
     res.setHeader('Content-Type', 'text/event-stream');
@@ -401,8 +403,10 @@ app.post('/api/chat', verifyToken, async (req, res) => {
       }
     });
 
-    // Save final AI message to DB
-    await db.addChatMessage(userId, sessionId, 'assistant', result.answer);
+    // Save final AI message to DB only if not an analytics event
+    if (!isAnalyticsEvent) {
+      await db.addChatMessage(userId, sessionId, 'assistant', result.answer);
+    }
 
     // Send final payload with tools used
     res.write(`data: ${JSON.stringify({ type: 'done', answer: result.answer, toolsUsed: result.toolsUsed, sessionId })}\n\n`);
